@@ -140,6 +140,8 @@ export class Stage {
       const cy = p.focusY ?? -0.38;
       p.camera.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, cy + Math.sin(pitch) * dist, (p.focusZ || 0) + Math.cos(yaw) * Math.cos(pitch) * dist);
       p.camera.lookAt(0, cy, p.focusZ || 0);
+      const sc = p.head.group.scale.x;
+      p.head.setDepth(dist - 1.25 * sc, dist + 1.25 * sc);
       const mouth = p.head.mouthPoint(this.tmpV);
       for (let i = p.words.length - 1; i >= 0; i--) {
         const w = p.words[i];

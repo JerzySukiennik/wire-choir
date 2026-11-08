@@ -25,7 +25,8 @@ const T = {
     mood: 'Nastrój', key: 'Tonacja', tempo: 'Tempo', lang: 'Język', saved_lines: 'Linijki', playAll: 'Odtwórz całość', stopAll: 'Zatrzymaj',
     newMelody: 'Nowa melodia', emptySong: 'Napisz linijkę na dole i wciśnij Shift+Enter, żeby ją tu zapisać.', newMelodyDone: 'Nowa melodia gotowa',
     noLead: 'Żadna głowa nie prowadzi, więc tekst nie zostanie zaśpiewany. Ustaw rolę „Prowadzi” w oknie Głowy.', maxHeads: 'Maksymalnie 6 głów', all: 'wszyscy',
-    keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'zapisz'], ['␣', 'odtwórz']], who: 'Kto śpiewa: kliknij, żeby zmienić',
+    keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'dodaj do piosenki'], ['␣', 'odtwórz całość']], afterHint: [['⇧⏎', 'dodaj tę linijkę do piosenki'], ['↑', 'popraw']], who: 'Kto śpiewa: kliknij, żeby zmienić',
+    notes: 'Nuty', play: 'Graj', exp: 'Eksport',
   },
   en: {
     placeholder: 'Type something for them to sing', sing: 'sing', save: 'save', play: 'play', stop: 'stop',
@@ -40,7 +41,8 @@ const T = {
     mood: 'Mood', key: 'Key', tempo: 'Tempo', lang: 'Language', saved_lines: 'Lines', playAll: 'Play all', stopAll: 'Stop',
     newMelody: 'New melody', emptySong: 'Type a line below and press Shift+Enter to save it here.', newMelodyDone: 'New melody ready',
     noLead: 'No head is set to Lead, so the words won’t be sung. Set a head to “Lead” in the Heads window.', maxHeads: 'Up to 6 heads', all: 'everyone',
-    keysHint: [['⏎', 'sing'], ['⇧⏎', 'save'], ['␣', 'play']], who: 'Who sings: click to change',
+    keysHint: [['⏎', 'sing'], ['⇧⏎', 'add to song'], ['␣', 'play all']], afterHint: [['⇧⏎', 'add this line to the song'], ['↑', 'edit']], who: 'Who sings: click to change',
+    notes: 'Notes', play: 'Play', exp: 'Export',
   },
 };
 
@@ -129,7 +131,7 @@ function karaHide(fade) {
 player.onEnd = () => { karaHide(true); current = null; renderHistory(); updateStatus(); };
 
 const input = $('#input'), kara = $('#kara');
-let lastSung = '';
+let lastSung = '', lastSaved = true;
 function autosize() { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; }
 
 function singersFor(lines) {
@@ -169,6 +171,8 @@ async function singLine(text) {
   player.play(arr, parts, song.lang, song.heads, dur);
   current = { mode: 'line', parsed, arr: { ...arr, duration: dur }, notes, color: colorOf(leads[0]) };
   lastSung = text;
+  lastSaved = song.lines.some((l) => l.text === text);
+  renderHint();
   kara.innerHTML = karaokeHTML(text, notes);
   if (!input.value) karaShow(); else karaHide(false);
   updateStatus();
@@ -197,8 +201,14 @@ function saveLine(text) {
   text = text.trim();
   if (!text) return;
   song.lines.push({ text, singers: [] });
+  if (text === lastSung) lastSaved = true;
   commit();
+  renderHint();
   toast(t().saved(song.lines.length));
+}
+function saveNow() {
+  if (input.value.trim()) { saveLine(input.value); input.value = ''; autosize(); }
+  else if (lastSung && !lastSaved) saveLine(lastSung);
 }
 
 input.addEventListener('keydown', (e) => {
@@ -208,7 +218,7 @@ input.addEventListener('keydown', (e) => {
     send();
   } else if (e.key === 'Enter' && e.shiftKey) {
     e.preventDefault();
-    if (input.value.trim()) { saveLine(input.value); input.value = ''; autosize(); }
+    saveNow();
   } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault(); toggleSong();
   } else if (e.key === ' ' && !input.value) {
@@ -227,7 +237,7 @@ function send() {
   singLine(v);
 }
 input.addEventListener('input', () => { autosize(); if (input.value) karaHide(false); });
-$('#send').addEventListener('click', () => { send(); input.focus(); });
+$('#save').addEventListener('click', () => { saveNow(); input.focus(); });
 $('#dock').addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) setTimeout(() => input.focus(), 0); });
 window.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
@@ -257,27 +267,27 @@ function updateStatus() {
 function renderChrome() {
   document.documentElement.lang = song.lang;
   input.placeholder = t().placeholder;
-  $('#keys').innerHTML = t().keysHint.map(([k, v]) => `<span><kbd>${k}</kbd>${v}</span>`).join('');
-  const labels = { heads: t().heads, song: t().song };
+  renderHint();
+  const labels = { heads: t().heads, song: t().song, notes: t().notes, play: t().play, export: t().exp };
   document.querySelectorAll('#rail button').forEach((b) => { b.querySelector('span').textContent = labels[b.dataset.open]; b.setAttribute('aria-label', labels[b.dataset.open]); });
   updateStatus();
 }
 
+function renderHint() {
+  const after = lastSung && !lastSaved;
+  document.body.classList.toggle('can-save', after);
+  $('#hint').innerHTML = (after ? t().afterHint : t().keysHint).map(([k, v]) => `<span><kbd>${k}</kbd>${v}</span>`).join('');
+}
+
 function renderHistory() {
   const h = $('#history');
-  const i = document.body.className.match(/i(\d)/);
-  const mode = i ? i[1] : '1';
-  if (mode === '1') { h.innerHTML = ''; return; }
   const playingLine = current && current.mode === 'song' ? current.line : -1;
   h.innerHTML = song.lines.map((l, k) => {
     const who = (l.singers && l.singers[0]) || (song.heads.find((x) => x.role === 'lead') || {}).id;
     const c = (song.heads.find((x) => x.id === who) || {}).color || '#4fd2ff';
-    return mode === '2'
-      ? `<button class="chip${k === playingLine ? ' on' : ''}" data-l="${k}">${esc(l.text)}</button>`
-      : `<button class="verse${k === playingLine ? ' on' : ''}" data-l="${k}"><i style="background:${c}"></i>${esc(l.text)}</button>`;
+    return `<button class="verse${k === playingLine ? ' on' : ''}" data-l="${k}"><i style="background:${c}"></i>${esc(l.text)}</button>`;
   }).join('');
   h.scrollTop = h.scrollHeight;
-  h.scrollLeft = h.scrollWidth;
 }
 $('#history').addEventListener('click', (e) => {
   const b = e.target.closest('[data-l]');
@@ -286,18 +296,6 @@ $('#history').addEventListener('click', (e) => {
   if (l) singLine(l.text);
 });
 
-function setInterp(n) {
-  document.body.classList.remove('i1', 'i2', 'i3');
-  document.body.classList.add('i' + n);
-  document.querySelectorAll('#interp button').forEach((b) => b.classList.toggle('on', b.dataset.i === String(n)));
-  try { localStorage.setItem('wc.interp', n); } catch (e) {}
-  renderHistory();
-  requestAnimationFrame(autosize);
-}
-$('#interp').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setInterp(b.dataset.i); });
-let interp = '1';
-try { interp = localStorage.getItem('wc.interp') || '1'; } catch (e) {}
-setInterp(interp);
 
 const wins = {};
 function openWin(name) {

@@ -9,24 +9,26 @@
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
 <link rel="stylesheet" href="css/app.css">
 </head>
-<body class="i1">
+<body>
 <canvas id="stage" aria-label="Śpiewające głowy"></canvas>
 <header id="bar">
   <div class="bar-l">Wire Choir</div>
   <button class="bar-c" id="status" data-open="song"></button>
-  <div class="bar-r" id="keys"></div>
 </header>
 <nav id="rail" aria-label="Panele">
-  <button data-open="heads" aria-label="Głowy"><svg viewBox="0 0 24 24"><path d="M12 3.5c-3.6 0-6 2.6-6 6 0 1.7.6 3 1.5 4l.2 2.3c.1.9.8 1.6 1.7 1.6H11v2.6h3.5v-2.6c2.6 0 4.2-1.6 4.2-4.1 0-.8.5-1.1.8-1.6.4-.6-.1-1.1-.6-1.4C18.6 6.6 16 3.5 12 3.5z"/></svg><span></span></button>
-  <button data-open="song" aria-label="Piosenka"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h12M4 17h8"/></svg><span></span></button>
+  <button data-open="heads"><svg viewBox="0 0 24 24"><path d="M12 3.5c-3.6 0-6 2.6-6 6 0 1.7.6 3 1.5 4l.2 2.3c.1.9.8 1.6 1.7 1.6H11v2.6h3.5v-2.6c2.6 0 4.2-1.6 4.2-4.1 0-.8.5-1.1.8-1.6.4-.6-.1-1.1-.6-1.4C18.6 6.6 16 3.5 12 3.5z"/></svg><span></span></button>
+  <button data-open="song"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h12M4 17h8"/></svg><span></span></button>
+  <button data-open="notes"><svg viewBox="0 0 24 24"><path d="M3.5 17h5M7 12h6M11 7h5M15.5 15h5M3.5 21h17"/></svg><span></span></button>
+  <button data-open="play"><svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M8 5.5v8M12 5.5v8M16 5.5v8"/></svg><span></span></button>
+  <button data-open="export"><svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M5 13v5.5h14V13"/></svg><span></span></button>
 </nav>
-<div id="interp" role="group" aria-label="Interpretacja"><span>Interpretacja</span><button data-i="1">1 Pustka</button><button data-i="2">2 Prompt</button><button data-i="3">3 Wiersz</button></div>
 <main id="dock">
   <div id="history"></div>
   <div id="field">
     <div id="kara" aria-live="polite"></div>
     <textarea id="input" rows="1" spellcheck="false" autocomplete="off" autocapitalize="sentences"></textarea>
-    <button id="send" aria-label="Zaśpiewaj"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+    <button id="save" aria-label="Zapisz linijkę">+</button>
+    <div id="hint"></div>
   </div>
   <div id="toast" role="status"></div>
 </main>

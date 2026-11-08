@@ -39,13 +39,36 @@ export function shellPoint(y, phi, out) {
   const nf = 2.6, nb = 2.1;
   const x = W * Math.sign(s) * Math.pow(Math.abs(s), 2 / (c >= 0 ? nf : nb));
   let z = (c >= 0 ? F : B) * Math.sign(c) * Math.pow(Math.abs(c), 2 / (c >= 0 ? nf : nb));
+  const pa = Math.abs(phi > Math.PI ? phi - 2 * Math.PI : phi);
+  const bulge = 1 + 0.04 * Math.exp(-(((y - 0.03) / 0.13) ** 2) - (((pa - 0.95) / 0.32) ** 2))
+    + 0.035 * Math.exp(-(((y + 0.86) / 0.12) ** 2) - (((pa - 1.45) / 0.3) ** 2))
+    - 0.025 * Math.exp(-(((y - 0.42) / 0.14) ** 2) - (((pa - 1.25) / 0.25) ** 2));
+  let xx = x * bulge;
+  z *= bulge;
   if (c > 0) {
     const fw = FEATW(y);
-    z += (FRONT(y) - F) * Math.exp(-(x * x) / (fw * fw)) * c;
-    for (const ex of [-0.29, 0.29]) z -= 0.07 * Math.exp(-((x - ex) ** 2) / 0.02 - ((y - 0.2) ** 2) / 0.012) * c;
+    z += (FRONT(y) - F) * Math.exp(-(xx * xx) / (fw * fw)) * c;
+    for (const ex of [-0.29, 0.29]) z -= 0.1 * Math.exp(-((xx - ex) ** 2) / 0.018 - ((y - 0.2) ** 2) / 0.011) * c;
+    z += 0.05 * Math.exp(-(((Math.abs(xx) - 0.1) / 0.05) ** 2) - (((y + 0.17) / 0.05) ** 2)) * c;
+    z += 0.025 * Math.exp(-(((y - 0.38) / 0.05) ** 2) - (((Math.abs(xx) - 0.25) / 0.15) ** 2)) * c;
   }
-  out.set(x, y, z);
+  out.set(xx, y, z);
   return out;
+}
+
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3();
+export function shellNormal(y, phi, out) {
+  const e = 0.004;
+  shellPoint(y, phi + e, _a); shellPoint(y, phi - e, _b);
+  shellPoint(y + e, phi, _c); shellPoint(y - e, phi, _d);
+  _a.sub(_b); _c.sub(_d);
+  out.crossVectors(_a, _c).normalize();
+  if (!Number.isFinite(out.x)) out.set(0, 1, 0);
+  return out;
+}
+function phiOf(x, y) {
+  const r = Math.min(0.999, Math.abs(x) / WIDTH(y));
+  return Math.sign(x) * Math.asin(Math.pow(r, 1.3));
 }
 
 const _zf = new THREE.Vector3();
@@ -68,6 +91,9 @@ const VERT = `
 attribute vec3 color;
 attribute float jw;
 attribute vec3 aux;
+attribute vec3 nrm;
+uniform float uNear;
+uniform float uFar;
 uniform float uJaw;
 uniform float uMouth;
 uniform float uLarynx;
@@ -82,8 +108,18 @@ void main() {
   float a = uJaw * jw;
   float c = cos(a), s = sin(a);
   p = vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c) + uPivot;
-  vColor = color * uGain * (1.0 - aux.x * smoothstep(0.004, 0.035, uMouth));
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  float shade = 1.0;
+  if (dot(nrm, nrm) > 0.0) {
+    vec3 n = vec3(nrm.x, nrm.y * c - nrm.z * s, nrm.y * s + nrm.z * c);
+    vec3 vn = normalize(normalMatrix * n);
+    float ndv = dot(vn, normalize(-mv.xyz));
+    float rim = 1.0 - abs(ndv);
+    shade = (0.2 + 2.1 * rim * rim * rim) * (ndv > 0.0 ? 1.0 : 0.42);
+  }
+  float fade = 1.0 - 0.68 * clamp((-mv.z - uNear) / max(0.001, uFar - uNear), 0.0, 1.0);
+  vColor = color * uGain * shade * fade * (1.0 - aux.x * smoothstep(0.004, 0.035, uMouth));
+  gl_Position = projectionMatrix * mv;
 }`;
 const FRAG = `
 varying vec3 vColor;
@@ -91,29 +127,32 @@ void main() { gl_FragColor = vec4(pow(max(vColor, vec3(0.0)), vec3(0.4545)), 1.0
 
 function lineMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { uJaw: { value: 0 }, uMouth: { value: 0 }, uLarynx: { value: 0 }, uBrow: { value: 0 }, uPivot: { value: PIVOT.clone() }, uGain: { value: 1 } },
+    uniforms: { uNear: { value: 5 }, uFar: { value: 8 }, uJaw: { value: 0 }, uMouth: { value: 0 }, uLarynx: { value: 0 }, uBrow: { value: 0 }, uPivot: { value: PIVOT.clone() }, uGain: { value: 1 } },
     vertexShader: VERT, fragmentShader: FRAG,
     transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
   });
 }
 
 const ZERO = [0, 0, 0];
+const NZ = { x: 0, y: 0, z: 0 };
 class Builder {
-  constructor() { this.pos = []; this.col = []; this.jw = []; this.aux = []; }
-  seg(a, b, c, ja, jb, xa, xb) {
+  constructor() { this.pos = []; this.col = []; this.jw = []; this.aux = []; this.nrm = []; }
+  seg(a, b, c, ja, jb, xa, xb, na, nb) {
     this.pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
     this.col.push(c.r, c.g, c.b, c.r, c.g, c.b);
     this.jw.push(ja || 0, jb ?? ja ?? 0);
     const A = xa || ZERO, B = xb || xa || ZERO;
     this.aux.push(A[0], A[1], A[2], B[0], B[1], B[2]);
+    const P = na || NZ, Q = nb || na || NZ;
+    this.nrm.push(P.x, P.y, P.z, Q.x, Q.y, Q.z);
   }
-  poly(pts, c, closed, jw, aux) {
+  poly(pts, c, closed, jw, aux, nrms) {
     const J = (p) => (typeof jw === 'function' ? jw(p) : jw || 0);
     const X = (p) => (typeof aux === 'function' ? aux(p) : aux || ZERO);
     const n = pts.length;
     for (let i = 0; i < n - 1 + (closed ? 1 : 0); i++) {
       const a = pts[i], b = pts[(i + 1) % n];
-      this.seg(a, b, c, J(a), J(b), X(a), X(b));
+      this.seg(a, b, c, J(a), J(b), X(a), X(b), nrms && nrms[i], nrms && nrms[(i + 1) % n]);
     }
   }
   geometry() {
@@ -122,6 +161,7 @@ class Builder {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.setAttribute('jw', new THREE.Float32BufferAttribute(this.jw, 1));
     g.setAttribute('aux', new THREE.Float32BufferAttribute(this.aux, 3));
+    g.setAttribute('nrm', new THREE.Float32BufferAttribute(this.nrm, 3));
     return g;
   }
 }
@@ -169,6 +209,7 @@ export class WireHead {
     g.setAttribute('color', new THREE.BufferAttribute(this.dCol, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('jw', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 2), 1));
     g.setAttribute('aux', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 6), 3));
+    g.setAttribute('nrm', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 6), 3));
     this.dynGeo = g;
     this.dynLines = new THREE.LineSegments(g, this.dynMat);
     this.dynLines.frustumCulled = false;
@@ -186,36 +227,35 @@ export class WireHead {
   buildStatic() {
     const b = new Builder();
     const C = this.color;
-    const shell = col(C, 0.2), shellHi = col(C, 1.0), skull = col(C, 0.1);
+    const shell = col(C, 0.62), shellHi = col(C, 1.1), skull = col(C, 0.09);
     const bone = col('#efe6d2', 0.45), boneHi = col('#efe6d2', 0.7), jawC = col('#ff9a3c', 1.0);
     const shellAux = (p) => [lipBand(p), 0, 0];
     const p = V(0, 0, 0);
     for (let y = 1.18; y > -2.2; y -= 0.042) {
-      const pts = [];
-      for (let k = 0; k <= 110; k++) pts.push(shellPoint(y, (k / 110) * Math.PI * 2, V(0, 0, 0)));
-      b.poly(pts, y < -1.6 ? col(C, 0.2 * Math.max(0, 1 - (-1.6 - y) / 0.6)) : shell, false, jawWeight, shellAux);
+      const pts = [], ns = [];
+      for (let k = 0; k <= 110; k++) { const ph = (k / 110) * Math.PI * 2; pts.push(shellPoint(y, ph, V(0, 0, 0))); ns.push(shellNormal(y, ph, V(0, 0, 0))); }
+      b.poly(pts, y < -1.6 ? col(C, 0.5 * Math.max(0, 1 - (-1.6 - y) / 0.6)) : shell, false, jawWeight, shellAux, ns);
     }
     const meridian = (phi, c) => {
-      const pts = [];
-      for (let y = 1.22; y > -1.75; y -= 0.03) pts.push(shellPoint(y, phi, V(0, 0, 0)));
+      const pts = [], ns = [];
+      for (let y = 1.22; y > -1.75; y -= 0.03) { pts.push(shellPoint(y, phi, V(0, 0, 0))); ns.push(shellNormal(y, phi, V(0, 0, 0))); }
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i], q = pts[i + 1];
         const cross = (a.y >= STOMION) !== (q.y >= STOMION) ? frontal(a) : 0;
-        b.seg(a, q, c, jawWeight(a), jawWeight(q), [Math.max(lipBand(a), cross), 0, 0], [Math.max(lipBand(q), cross), 0, 0]);
+        b.seg(a, q, c, jawWeight(a), jawWeight(q), [Math.max(lipBand(a), cross), 0, 0], [Math.max(lipBand(q), cross), 0, 0], ns[i], ns[i + 1]);
       }
     };
-    for (let k = 0; k < 36; k++) meridian((k / 36) * Math.PI * 2, k === 0 ? shellHi : col(C, 0.12));
-    for (const side of [-1, 1]) meridian(side * Math.PI / 2, col(C, 0.35));
-    const prof = [];
-    for (let y = 1.22; y > -2.0; y -= 0.02) prof.push(V(0, y, FRONT(y) + 0.004));
+    for (let k = 0; k < 36; k++) meridian((k / 36) * Math.PI * 2, col(C, 0.32));
+    const prof = [], profN = [];
+    for (let y = 1.22; y > -2.0; y -= 0.02) { prof.push(V(0, y, FRONT(y) + 0.004)); profN.push(shellNormal(y, 0, V(0, 0, 0))); }
     for (let i = 0; i < prof.length - 1; i++) {
       const a = prof[i], q = prof[i + 1];
       const cut = (a.y >= STOMION) !== (q.y >= STOMION) ? 1 : 0;
-      b.seg(a, q, shellHi, jawWeight(a), jawWeight(q), [Math.max(cut, lipBand(a)), 0, 0], [Math.max(cut, lipBand(q)), 0, 0]);
+      b.seg(a, q, shellHi, jawWeight(a), jawWeight(q), [Math.max(cut, lipBand(a)), 0, 0], [Math.max(cut, lipBand(q)), 0, 0], profN[i], profN[i + 1]);
     }
-    const back = [];
-    for (let y = -2.0; y < 1.22; y += 0.02) back.push(V(0, y, BACK(y)));
-    b.poly(back, shellHi, false, 0);
+    const back = [], backN = [];
+    for (let y = -2.0; y < 1.22; y += 0.02) { back.push(V(0, y, BACK(y))); backN.push(shellNormal(y, Math.PI, V(0, 0, 0))); }
+    b.poly(back, shellHi, false, 0, null, backN);
     for (const ex of [-0.29, 0.29]) {
       const eye = [], iris = [], brow = [], brow2 = [];
       for (let k = 0; k <= 28; k++) {
@@ -231,19 +271,23 @@ export class WireHead {
         brow.push(V(x, y, p.z + 0.01));
         brow2.push(V(x, y + 0.025, p.z + 0.006));
       }
-      b.poly(eye, col(C, 0.75), false, 0);
-      b.poly(iris, col(C, 0.5), false, 0);
-      b.poly(brow, col(C, 0.7), false, 0, BROW);
-      b.poly(brow2, col(C, 0.35), false, 0, BROW);
-      const ear = [], ear2 = [];
-      const W0 = WIDTH(0.05);
-      for (let k = 0; k <= 30; k++) {
-        const t = -0.4 + (k / 30) * Math.PI * 1.55;
-        ear.push(V(Math.sign(ex) * (W0 + 0.05 + 0.03 * Math.sin(t)), 0.08 + Math.sin(t) * 0.26, -0.12 - Math.cos(t) * 0.14));
-        ear2.push(V(Math.sign(ex) * (W0 + 0.04), 0.08 + Math.sin(t) * 0.15, -0.1 - Math.cos(t) * 0.07));
+      const nOf = (arr) => arr.map((v) => shellNormal(v.y, phiOf(v.x, v.y), V(0, 0, 0)));
+      b.poly(eye, col(C, 1.1), false, 0, null, nOf(eye));
+      b.poly(iris, col(C, 0.8), false, 0, null, nOf(iris));
+      b.poly(brow, col(C, 1.1), false, 0, BROW, nOf(brow));
+      b.poly(brow2, col(C, 0.6), false, 0, BROW, nOf(brow2));
+      const sd = Math.sign(ex), W0 = WIDTH(0.05);
+      const earMap = (u, v) => V(sd * (W0 + 0.015 + 0.08 * Math.max(0, u)), 0.04 + v, -0.07 - u);
+      const earN = { x: sd, y: 0, z: 0 };
+      const helix = [[-0.02, -0.21], [0.03, -0.27], [0.09, -0.24], [0.12, -0.13], [0.14, 0.01], [0.15, 0.15], [0.12, 0.25], [0.05, 0.3], [-0.03, 0.28], [-0.07, 0.2], [-0.06, 0.12]];
+      const anti = [[0.0, -0.12], [0.06, -0.06], [0.09, 0.05], [0.08, 0.16], [0.03, 0.21], [-0.02, 0.18]];
+      const tragus = [[-0.05, -0.09], [-0.075, -0.02], [-0.05, 0.05]];
+      const concha = [];
+      for (let k = 0; k <= 14; k++) { const t = (k / 14) * Math.PI * 2; concha.push([0.02 + Math.cos(t) * 0.045, -0.01 + Math.sin(t) * 0.06]); }
+      for (const [pts2, k] of [[helix, 1.0], [anti, 0.6], [tragus, 0.6], [concha, 0.4]]) {
+        const pts3 = pts2.map(([u, v]) => earMap(u, v));
+        b.poly(pts3, col(C, k), false, 0, null, pts3.map(() => earN));
       }
-      b.poly(ear, col(C, 0.55), false, 0);
-      b.poly(ear2, col(C, 0.3), false, 0);
       const nos = [];
       for (let k = 0; k <= 12; k++) { const t = (k / 12) * Math.PI * 2; nos.push(V(Math.sign(ex) * 0.07 + Math.cos(t) * 0.035, -0.2 + Math.sin(t) * 0.018, 1.03)); }
       b.poly(nos, col(C, 0.45), false, 0);
@@ -538,6 +582,10 @@ export class WireHead {
         p0 = [x, y, z];
       }
     }
+  }
+
+  setDepth(near, far) {
+    for (const m of [this.mat, this.dynMat]) { m.uniforms.uNear.value = near; m.uniforms.uFar.value = far; }
   }
 
   mouthPoint(out) {
