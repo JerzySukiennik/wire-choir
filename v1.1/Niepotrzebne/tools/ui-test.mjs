@@ -1,0 +1,45 @@
+// Headless check of the app windows, link round-trip and WAV export.
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+const require = createRequire('/Users/jurek/Downloads/Claude/Projects/CivicForge/node_modules/');
+const { chromium } = require('playwright-core');
+const [outDir, songFile] = process.argv.slice(2);
+const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, deviceScaleFactor: 1, permissions: ['clipboard-read', 'clipboard-write'] });
+const page = await ctx.newPage();
+const errs = [];
+page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errs.push(m.text()); });
+page.on('pageerror', (e) => errs.push('pageerror ' + e.message));
+const song = JSON.parse(readFileSync(songFile, 'utf8'));
+await page.addInitScript((s) => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('wc.song', JSON.stringify(s)); localStorage.removeItem('wc.windows'); sessionStorage.setItem('seeded', '1'); } }, song);
+await page.goto('http://localhost:8817/');
+await page.waitForTimeout(2500);
+await page.click('#rail [data-open="notes"]');
+await page.waitForTimeout(800);
+await page.screenshot({ path: outDir + '/w-notes.png' });
+await page.click('#rail [data-open="notes"]');
+await page.click('#rail [data-open="play"]');
+await page.waitForTimeout(600);
+await page.mouse.click(700, 760);
+await page.screenshot({ path: outDir + '/w-play.png' });
+await page.click('#rail [data-open="play"]');
+await page.click('#rail [data-open="export"]');
+await page.waitForTimeout(400);
+await page.screenshot({ path: outDir + '/w-export.png' });
+const link = await page.evaluate(async () => {
+  const { encodeSong } = await import('/js/share.js');
+  return location.origin + location.pathname + '#s=' + (await encodeSong(window.__wc.app.song));
+});
+const wav = await page.evaluate(async () => {
+  const { renderWav } = await import('/js/share.js');
+  const job = await window.__wc.app.songJob();
+  const t0 = performance.now();
+  const blob = await renderWav(job);
+  return { bytes: blob.size, secs: +(job.duration).toFixed(1), renderMs: Math.round(performance.now() - t0) };
+});
+const page2 = await ctx.newPage();
+await page2.goto(link);
+await page2.waitForTimeout(2500);
+const loaded = await page2.evaluate(() => ({ lines: window.__wc.app.song.lines.map((l) => l.text), heads: window.__wc.app.song.heads.length, hash: location.hash, toast: document.getElementById('toast').textContent }));
+console.log(JSON.stringify({ linkLen: link.length, wav, loaded, errs }, null, 1));
+await browser.close();

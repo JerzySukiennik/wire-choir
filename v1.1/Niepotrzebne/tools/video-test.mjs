@@ -1,0 +1,36 @@
+// Headless check: Graj key press sings without errors, and a short 9:16 video records with audio.
+import { createRequire } from 'node:module';
+import { readFileSync, writeFileSync } from 'node:fs';
+const require = createRequire('/Users/jurek/Downloads/Claude/Projects/CivicForge/node_modules/');
+const { chromium } = require('playwright-core');
+const [outDir, songFile] = process.argv.slice(2);
+const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 1 });
+const errs = [];
+page.on('console', (m) => { if (m.type() === 'error' && !/404/.test(m.text())) errs.push(m.text()); });
+page.on('pageerror', (e) => errs.push('pageerror ' + e.message));
+const song = JSON.parse(readFileSync(songFile, 'utf8'));
+song.lines = song.lines.slice(0, 1);
+await page.addInitScript((s) => { localStorage.setItem('wc.song', JSON.stringify(s)); localStorage.removeItem('wc.windows'); }, song);
+await page.goto('http://localhost:8817/');
+await page.waitForTimeout(2500);
+await page.click('#rail [data-open="play"]');
+await page.waitForTimeout(500);
+const key = await page.$('.kbd .k[data-s="12"]');
+const box = await key.boundingBox();
+await page.mouse.move(box.x + box.width / 2, box.y + box.height - 10);
+await page.mouse.down();
+await page.waitForTimeout(500);
+const lvl = await page.evaluate(() => Math.max(...[...window.__wc.player.voices.values()].map((v) => v.level)));
+await page.mouse.up();
+const cur = await page.evaluate(() => document.querySelector('.stream .cur')?.textContent);
+await page.click('#rail [data-open="play"]');
+const res = await page.evaluate(async () => {
+  const blob = await window.__wc.app.recordVideo('9:16', () => {});
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let s = ''; for (let i = 0; i < buf.length; i += 8192) s += String.fromCharCode(...buf.subarray(i, i + 8192));
+  return { type: blob.type, size: blob.size, b64: btoa(s) };
+});
+writeFileSync(outDir + '/test-video.' + (res.type.includes('mp4') ? 'mp4' : 'webm'), Buffer.from(res.b64, 'base64'));
+console.log(JSON.stringify({ keyLevel: lvl, nextSyllable: cur, video: { type: res.type, size: res.size }, errs }));
+await browser.close();
