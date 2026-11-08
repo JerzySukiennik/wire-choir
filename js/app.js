@@ -11,6 +11,7 @@ import { Win } from './ui/windows.js';
 import { mountNotes } from './ui/notes.js';
 import { mountPlay } from './ui/play.js';
 import { mountExport } from './ui/export.js';
+import { mountListen } from './ui/listen.js';
 import { decodeSong, videoMime } from './share.js';
 import { lineIds } from './composer.js';
 
@@ -32,7 +33,16 @@ const T = {
     newMelody: 'Nowa melodia', emptySong: 'Napisz linijkę na dole i wciśnij Shift+Enter, żeby ją tu zapisać.', newMelodyDone: 'Nowa melodia gotowa',
     noLead: 'Żadna głowa nie prowadzi, więc tekst nie zostanie zaśpiewany. Ustaw rolę „Prowadzi” w oknie Głowy.', maxHeads: 'Maksymalnie 6 głów', all: 'wszyscy',
     keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'dodaj do piosenki'], ['␣', 'odtwórz całość']], afterHint: [['⇧⏎', 'dodaj tę linijkę do piosenki'], ['↑', 'popraw']], who: 'Kto śpiewa: kliknij, żeby zmienić',
-    notes: 'Nuty', play: 'Graj', exp: 'Eksport',
+    notes: 'Nuty', play: 'Graj', exp: 'Eksport', listenWin: 'Słuchaj',
+    lsNote: 'Puść piosenkę obok mikrofonu albo wybierz plik. Chór odtworzy jej tempo, melodię, bas, rytm i akordy, a słowa wpiszesz sam.',
+    lsMic: 'Nagrywaj z mikrofonu', lsStop: 'Zatrzymaj', lsFile: 'Wybierz plik', lsMicName: 'Nagranie z mikrofonu',
+    lsNoMic: 'Brak dostępu do mikrofonu. Zezwól na niego w przeglądarce albo wybierz plik.', lsBadFile: 'Nie da się odczytać tego dźwięku. Spróbuj MP3, M4A albo WAV.',
+    lsShort: 'Za krótko: potrzeba co najmniej 6 sekund.', lsPart: 'Fragment', lsDrag: 'przesuń po fali', lsWords: 'Słowa do melodii',
+    lsWordsPh: 'np. around the world (każda linijka to osobna fraza, puste: la la la)', lsLang: 'Język słów', lsAlso: 'Co jeszcze zaśpiewać', lsBass: 'Bas', lsDrums: 'Rytm',
+    lsGo: 'Odtwórz w chórze', lsBusy: 'Słucham…', lsUndo: 'Cofnij', lsUndone: 'Przywrócono poprzednią piosenkę', lsReady: 'Chór odtworzył utwór',
+    lsReplace: 'Zastępuje obecną piosenkę. Brakujące głosy (bas, beatbox) dodadzą się same.', lsQuiet: 'Za cicho, nic nie słychać. Podgłośnij albo podejdź bliżej.',
+    lsNoMelody: 'W tym fragmencie nie słychać melodii. Wybierz inny.',
+    lsDone: (a, n) => `${Math.round(a.bpm)} BPM · ${['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'][a.key]}-${a.mode === 'minor' ? 'moll' : 'dur'} · ${a.bars} taktów · ${n} ${n === 1 ? 'linijka' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'linijki' : 'linijek'} · ${a.melody.length} nut melodii, ${a.bass.length} basu`,
     notesEmpty: 'Zapisz linijki (Shift+Enter), żeby zobaczyć ich nuty.', manual: 'Melodia ręczna', autoMelody: 'Melodia automatyczna', dragHint: 'przeciągaj nuty, krawędź zmienia długość', backToAuto: 'Wróć do automatu',
     playNote: 'Każdy klawisz śpiewa kolejną sylabę piosenki. Harmonia dośpiewuje sama. Nagrane nuty zastępują melodię zaśpiewanych linijek.', playEmpty: 'Zapisz linijki albo wpisz tekst na dole, żeby było co śpiewać.',
     midiNone: 'Brak MIDI: graj myszką albo klawiaturą', recording: 'Nagrywanie…', keysOn: 'Klawiatura komputera: wł.', keysOff: 'Klawiatura komputera: wył.', fromStart: 'Od początku', record: 'Nagrywaj', stopRec: 'Zakończ nagranie',
@@ -56,7 +66,16 @@ const T = {
     newMelody: 'New melody', emptySong: 'Type a line below and press Shift+Enter to save it here.', newMelodyDone: 'New melody ready',
     noLead: 'No head is set to Lead, so the words won’t be sung. Set a head to “Lead” in the Heads window.', maxHeads: 'Up to 6 heads', all: 'everyone',
     keysHint: [['⏎', 'sing'], ['⇧⏎', 'add to song'], ['␣', 'play all']], afterHint: [['⇧⏎', 'add this line to the song'], ['↑', 'edit']], who: 'Who sings: click to change',
-    notes: 'Notes', play: 'Play', exp: 'Export',
+    notes: 'Notes', play: 'Play', exp: 'Export', listenWin: 'Listen',
+    lsNote: 'Play a song next to the microphone or pick a file. The choir rebuilds its tempo, melody, bass, beat and chords, and you type the words.',
+    lsMic: 'Record from microphone', lsStop: 'Stop', lsFile: 'Choose a file', lsMicName: 'Microphone recording',
+    lsNoMic: 'No microphone access. Allow it in the browser or pick a file.', lsBadFile: 'This audio cannot be read. Try MP3, M4A or WAV.',
+    lsShort: 'Too short: at least 6 seconds are needed.', lsPart: 'Excerpt', lsDrag: 'slide along the wave', lsWords: 'Words for the melody',
+    lsWordsPh: 'e.g. around the world (each line is its own phrase, empty: la la la)', lsLang: 'Language of the words', lsAlso: 'Also sing', lsBass: 'Bass', lsDrums: 'Beat',
+    lsGo: 'Rebuild with the choir', lsBusy: 'Listening…', lsUndo: 'Undo', lsUndone: 'Previous song restored', lsReady: 'The choir rebuilt the track',
+    lsReplace: 'Replaces the current song. Missing voices (bass, beatbox) are added on their own.', lsQuiet: 'Too quiet to hear anything. Turn it up or move closer.',
+    lsNoMelody: 'No melody can be heard in this excerpt. Pick another one.',
+    lsDone: (a, n) => `${Math.round(a.bpm)} BPM · ${['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'][a.key]} ${a.mode} · ${a.bars} bars · ${n} line${n === 1 ? '' : 's'} · ${a.melody.length} melody notes, ${a.bass.length} bass`,
     notesEmpty: 'Save lines (Shift+Enter) to see their notes.', manual: 'Hand-made melody', autoMelody: 'Automatic melody', dragHint: 'drag notes, the edge changes length', backToAuto: 'Back to automatic',
     playNote: 'Every key sings the next syllable of the song. Harmony follows on its own. Recorded notes replace the melody of the lines you sang.', playEmpty: 'Save lines or type text below so there is something to sing.',
     midiNone: 'No MIDI: play with the mouse or keyboard', recording: 'Recording…', keysOn: 'Computer keys: on', keysOff: 'Computer keys: off', fromStart: 'From the start', record: 'Record', stopRec: 'Finish recording',
@@ -189,7 +208,7 @@ async function singLine(text) {
   if (!parsed.syls.length) return;
   const leads = song.heads.filter((h) => h.role === 'lead').map((h) => h.id);
   if (!leads.length) toast(t().noLead, 4200);
-  const arr = arrange({ ...song, lineSingers: { 0: leads } }, parsed, song.heads, { intro: false });
+  const arr = arrange({ ...song, track: null, lineSingers: { 0: leads } }, parsed, song.heads, { intro: false });
   const parts = buildParts(arr, song.heads);
   const notes = arr.notes.map((n) => ({ ...n, t0: n.b * arr.spb, t1: (n.b + n.d) * arr.spb }));
   const backing = song.heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
@@ -294,7 +313,7 @@ function renderChrome() {
   document.documentElement.lang = song.lang;
   input.placeholder = t().placeholder;
   renderHint();
-  const labels = { heads: t().heads, song: t().song, notes: t().notes, play: t().play, export: t().exp };
+  const labels = { heads: t().heads, song: t().song, notes: t().notes, play: t().play, listen: t().listenWin, export: t().exp };
   document.querySelectorAll('#rail button').forEach((b) => { b.querySelector('span').textContent = labels[b.dataset.open]; b.setAttribute('aria-label', labels[b.dataset.open]); });
   updateStatus();
 }
@@ -324,8 +343,8 @@ $('#history').addEventListener('click', (e) => {
 
 
 const wins = {};
-const MODS = { notes: mountNotes, play: mountPlay, export: mountExport };
-const TITLE = { heads: () => t().heads, song: () => t().song, notes: () => t().notes, play: () => t().play, export: () => t().exp };
+const MODS = { notes: mountNotes, play: mountPlay, listen: mountListen, export: mountExport };
+const TITLE = { heads: () => t().heads, song: () => t().song, notes: () => t().notes, play: () => t().play, listen: () => t().listenWin, export: () => t().exp };
 function openWin(name) {
   if (wins[name]) { wins[name].close(); return; }
   const W = window.innerWidth, H = window.innerHeight;
@@ -335,6 +354,7 @@ function openWin(name) {
     notes: { w: Math.min(900, W - 140), h: 330, x: 70, y: Math.max(50, H * 0.42) },
     play: { w: 520, h: 330, x: Math.max(60, W / 2 - 260), y: Math.max(50, H * 0.4) },
     export: { w: 340, h: 430, x: Math.max(60, W - 400), y: 60 },
+    listen: { w: 380, h: 560, x: Math.max(60, W - 440), y: 50 },
   }[name];
   const w = new Win(name, TITLE[name](), cfg);
   w.onClose = () => {
@@ -361,7 +381,7 @@ function commit(opts = {}) {
   syncPanels();
   if (audioReady) player.sync(song.heads);
   if (!opts.keepWins) { renderWin('heads'); renderWin('song'); }
-  renderWin('notes'); renderWin('play');
+  renderWin('notes'); renderWin('play'); renderWin('listen');
   renderHistory();
   renderChrome();
 }
@@ -771,6 +791,22 @@ const app = {
     return { t0Perf: performance.now() + (player.t0 - sys.ctx.currentTime) * 1000 };
   },
   saveRecording, recordVideo,
+  replaceSong(s) {
+    player.stop(true);
+    current = null;
+    song = s;
+    expanded = song.heads[0] ? song.heads[0].id : null;
+    kara.innerHTML = '';
+    commit();
+    document.body.style.setProperty('--head', (song.heads.find((h) => h.role === 'lead') || song.heads[0]).color);
+  },
+  ensureRoles(s, want) {
+    const add = (role) => { if (s.heads.length < 6) s.heads.push(newHead(role, s.heads.length)); };
+    if (!s.heads.some((h) => h.role === 'lead')) add('lead');
+    if (want.bass && !s.heads.some((h) => h.role === 'bass')) add('bass');
+    if (want.drums) while (s.heads.filter((h) => h.role === 'beatbox').length < 2 && s.heads.length < 6) add('beatbox');
+  },
+  playFromStart() { if (song.lines.length) playSong(); },
   fileName: (ext) => 'wire-choir-' + ((song.lines[0] && song.lines[0].text) || 'piosenka').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '.' + ext,
 };
 

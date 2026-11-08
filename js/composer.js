@@ -47,6 +47,22 @@ function chordInfo(deg, key, mode, harmonicV) {
   return { deg, root: pcs[0], pcs, steps: [deg % 7, (deg + 2) % 7, (deg + 4) % 7], name: NAMES[pcs[0]] + q };
 }
 
+export function trackChord(c, key, mode) {
+  const sc = SCALES[mode];
+  const r = ((c[0] % 12) + 12) % 12;
+  const pcs = [r, (r + (c[1] ? 3 : 4)) % 12, (r + 7) % 12];
+  const steps = pcs.map((pc) => {
+    let best = 0, bd = 99;
+    for (let d = 0; d < 7; d++) { const x = Math.abs((((sc[d] + key - pc) % 12) + 18) % 12 - 6); if (x < bd) { bd = x; best = d; } }
+    return best;
+  });
+  return { deg: steps[0], root: r, pcs, steps, name: NAMES[r] + (c[1] ? 'm' : '') };
+}
+
+export function validTrack(t) {
+  return t && typeof t === 'object' && t.bars > 0 ? t : null;
+}
+
 function bestRhythm(syls, bars, feel, R) {
   const S = syls.length, T = bars * 8;
   let best = null, bs = -1e9;
@@ -145,7 +161,8 @@ export function arrange(song, parsed, heads, opts = {}) {
   const R0 = rng(song.seed);
   const prog = mood.progs[Math.floor(R0() * mood.progs.length)];
   const backing = heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
-  const introBars = backing && opts.intro !== false ? 1 : 0;
+  const tr = validTrack(song.track);
+  const introBars = !tr && backing && opts.intro !== false ? 1 : 0;
   const leads = heads.filter((h) => h.role === 'lead');
   const ids = lineIds(parsed);
   const mel = song.melody && typeof song.melody === 'object' && !Array.isArray(song.melody) ? song.melody : {};
@@ -162,8 +179,9 @@ export function arrange(song, parsed, heads, opts = {}) {
   });
   const lastLine = lines.length ? lines[lines.length - 1] : null;
   const endBar = lastLine ? Math.ceil(lastLine.b1 / 4) : introBars;
-  const songBars = Math.max(1, endBar + (backing ? 1 : 0));
+  const songBars = tr ? Math.max(tr.bars, endBar) : Math.max(1, endBar + (backing ? 1 : 0));
   const chordForBar = (b) => {
+    if (tr && tr.chords && tr.chords[b]) return trackChord(tr.chords[b], key, mode);
     if (b < introBars) return chordInfo(0, key, mode, true);
     if (lastLine && b >= endBar - 1) return chordInfo(0, key, mode, true);
     if (lastLine && b === endBar - 2 && lastLine.bars >= 2) return chordInfo(4, key, mode, true);
@@ -206,7 +224,7 @@ export function arrange(song, parsed, heads, opts = {}) {
     return [leads[idx % leads.length].id];
   };
   lines.forEach((l, idx) => { l.singers = singersOf(l.i, idx); });
-  return { bpm, spb, key, mode, mood: song.mood, introBars, totalBeats: songBars * 4, duration: songBars * 4 * spb + 1.5, chords, notes, lines, lang: parsed.lang, explicit: lines.some((l) => l.explicit) };
+  return { bpm, spb, key, mode, mood: song.mood, introBars, totalBeats: songBars * 4, duration: songBars * 4 * spb + 1.5, chords, notes, lines, lang: parsed.lang, explicit: lines.some((l) => l.explicit), track: tr };
 }
 
 export function snapToScale(m, key, mode) {
@@ -294,7 +312,19 @@ export function buildParts(arr, heads) {
     }[mood.bass];
     const syl = mood.bass === 'hymn' ? { on: [], nu: ['o'], co: [] } : mood.bass === 'pulse' ? { on: ['d'], nu: ['@'], co: [] } : mood.bass === 'pop' ? { on: ['d'], nu: ['U'], co: ['m'] } : { on: ['d'], nu: ['u'], co: ['m'] };
     const lastBar = arr.chords.length - 1;
+    const tb = arr.track && Array.isArray(arr.track.bass) && arr.track.bass.length ? arr.track.bass : null;
+    const autoFrom = tb ? arr.track.bars : 0;
+    if (tb) {
+      const sh = fitOctave(tb.map((n) => n[2]), h.lo, h.hi, (h.shift || 0) - 4);
+      for (const [b, d, m0] of tb) {
+        let m = m0 + sh;
+        while (m < h.lo - 3) m += 12;
+        while (m > h.hi + 3) m -= 12;
+        parts[h.id].notes.push({ t: b * spb, d: d * spb, f0: midiToHz(m), m, amp: 0.8, syl: d < 0.4 ? { on: ['d'], nu: ['@'], co: [] } : { on: ['d'], nu: ['U'], co: ['m'] }, w: -1 });
+      }
+    }
     arr.chords.forEach((ch, bi) => {
+      if (bi < autoFrom) return;
       const p = bi === lastBar ? [[0, 3.5, 0]] : pat;
       for (const [b, d, ti] of p) {
         const m = near(ch.pcs[ti]);
@@ -312,7 +342,25 @@ export function buildParts(arr, heads) {
     }[mood.drums];
     const amps = { K: 1, S: mood.drums === 'ballad' ? 0.7 : 0.9, H: 0.55, O: 0.6 };
     const lastBar = arr.chords.length - 1;
+    const td = arr.track && Array.isArray(arr.track.drums) && arr.track.drums.length ? arr.track.drums : null;
+    const autoFrom = td ? arr.track.bars : 0;
+    if (td) {
+      const kit = heads.filter((x) => x.role === 'beatbox');
+      const idx = kit.indexOf(h);
+      const mine = kit.length === 1 ? 'KSHO' : idx === 0 ? 'K' : kit.length === 2 || idx === 1 ? (kit.length === 2 ? 'SHO' : 'S') : 'HO';
+      const PRI = { S: 4, K: 3, O: 2, H: 1 };
+      const at = new Map();
+      for (const [b, type, amp] of td) {
+        if (!mine.includes(type)) continue;
+        if (dens === 'calm' && (type === 'H' || type === 'O')) continue;
+        const k = Math.round(b * 1000);
+        const prev = at.get(k);
+        if (!prev || PRI[type] > PRI[prev.type]) at.set(k, { type, t: b * spb, amp });
+      }
+      for (const v of at.values()) parts[h.id].drums.push(v);
+    }
     arr.chords.forEach((ch, bi) => {
+      if (bi < autoFrom) return;
       if (bi === lastBar) { parts[h.id].drums.push({ type: 'K', t: ch.b * spb, amp: 1 }); return; }
       const hits = { K: P.K.slice(), S: P.S.slice(), H: P.H.slice(), O: P.O.slice() };
       if (dens === 'calm') { hits.H = []; hits.O = []; }

@@ -17,7 +17,7 @@ function unb64url(str) {
 }
 
 export async function encodeSong(song) {
-  const data = { v: 1, lang: song.lang, mood: song.mood, key: song.key, bpm: song.bpm, seed: song.seed, lines: song.lines, heads: song.heads, melody: song.melody || {} };
+  const data = { v: 1, lang: song.lang, mood: song.mood, key: song.key, bpm: song.bpm, seed: song.seed, lines: song.lines, heads: song.heads, melody: song.melody || {}, track: song.track || undefined };
   const bytes = new TextEncoder().encode(JSON.stringify(data));
   if (typeof CompressionStream !== 'undefined') {
     const cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
@@ -35,7 +35,19 @@ export async function decodeSong(str) {
   } else json = new TextDecoder().decode(bytes);
   const d = JSON.parse(json);
   if (!d || d.v !== 1 || !Array.isArray(d.heads) || !d.heads.length) throw new Error('bad song');
-  return { v: 1, lang: d.lang === 'en' ? 'en' : 'pl', mood: d.mood || 'happy', key: +d.key || 0, bpm: d.bpm || null, seed: +d.seed || 7, lines: (d.lines || []).slice(0, 80), heads: d.heads.slice(0, 6), melody: d.melody || {} };
+  return { v: 1, lang: d.lang === 'en' ? 'en' : 'pl', mood: d.mood || 'happy', key: +d.key || 0, bpm: d.bpm || null, seed: +d.seed || 7, lines: (d.lines || []).slice(0, 80), heads: d.heads.slice(0, 6), melody: d.melody || {}, track: cleanTrack(d.track) };
+}
+
+function cleanTrack(t) {
+  if (!t || typeof t !== 'object' || !(t.bars > 0)) return undefined;
+  const num = (v) => (Number.isFinite(+v) ? +v : 0);
+  return {
+    bars: Math.min(160, Math.round(num(t.bars))),
+    chords: (Array.isArray(t.chords) ? t.chords.slice(0, 160) : []).map((c) => (Array.isArray(c) ? [num(c[0]) % 12, c[1] ? 1 : 0] : null)),
+    bass: (Array.isArray(t.bass) ? t.bass.slice(0, 3000) : []).filter(Array.isArray).map((n) => [num(n[0]), Math.max(0.05, num(n[1])), Math.max(20, Math.min(90, num(n[2])))]),
+    drums: (Array.isArray(t.drums) ? t.drums.slice(0, 6000) : []).filter((n) => Array.isArray(n) && 'KSHO'.includes(n[1])).map((n) => [num(n[0]), n[1], Math.max(0, Math.min(1.2, num(n[2])))]),
+    src: t.src === 'mic' ? 'mic' : 'file',
+  };
 }
 
 export async function renderWav(job, onProgress) {
