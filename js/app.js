@@ -118,9 +118,18 @@ player.onWord = (hid, w) => {
   const word = current && current.parsed.words[w];
   if (p && word) stage.emitWord(p, word.text);
 };
-player.onEnd = () => { document.body.classList.remove('singing-line', 'playing-song'); current = null; renderHistory(); updateStatus(); };
+let karaToken = 0;
+function karaShow() { karaToken++; document.body.classList.remove('kara-fade'); document.body.classList.add('kara-on'); }
+function karaHide(fade) {
+  const tok = ++karaToken;
+  if (!fade) { document.body.classList.remove('kara-on', 'kara-fade'); return; }
+  document.body.classList.add('kara-fade');
+  setTimeout(() => { if (tok === karaToken) document.body.classList.remove('kara-on', 'kara-fade'); }, 900);
+}
+player.onEnd = () => { karaHide(true); current = null; renderHistory(); updateStatus(); };
 
-const input = $('#input'), mirror = $('#mirror'), kara = $('#kara');
+const input = $('#input'), kara = $('#kara');
+let lastSung = '';
 function autosize() { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; }
 
 function singersFor(lines) {
@@ -154,12 +163,14 @@ async function singLine(text) {
   if (!leads.length) toast(t().noLead, 4200);
   const arr = arrange({ ...song, melody: null, lineSingers: { 0: leads } }, parsed, song.heads, { intro: false });
   const parts = buildParts(arr, song.heads);
-  player.play(arr, parts, song.lang, song.heads);
   const notes = arr.notes.map((n) => ({ ...n, t0: n.b * arr.spb, t1: (n.b + n.d) * arr.spb }));
-  current = { mode: 'line', parsed, arr, notes, color: colorOf(leads[0]) };
-  mirror.innerHTML = karaokeHTML(input.value, notes);
-  document.body.classList.remove('playing-song');
-  document.body.classList.add('singing-line');
+  const backing = song.heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
+  const dur = backing ? arr.duration : Math.max(...notes.map((n) => n.t1)) + 0.7;
+  player.play(arr, parts, song.lang, song.heads, dur);
+  current = { mode: 'line', parsed, arr: { ...arr, duration: dur }, notes, color: colorOf(leads[0]) };
+  lastSung = text;
+  kara.innerHTML = karaokeHTML(text, notes);
+  if (!input.value) karaShow(); else karaHide(false);
   updateStatus();
 }
 
@@ -173,8 +184,8 @@ async function playSong() {
   player.play(arr, parts, song.lang, song.heads);
   const notes = arr.notes.map((n) => ({ ...n, t0: n.b * arr.spb, t1: (n.b + n.d) * arr.spb }));
   current = { mode: 'song', parsed, arr, notes, line: -1 };
-  document.body.classList.remove('singing-line');
-  document.body.classList.add('playing-song');
+  kara.innerHTML = '';
+  if (!input.value) karaShow(); else karaHide(false);
   updateStatus();
 }
 
@@ -194,22 +205,29 @@ input.addEventListener('keydown', (e) => {
   if (e.isComposing) return;
   if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
     e.preventDefault();
-    if (input.value.trim()) singLine(input.value); else toggleSong();
+    send();
   } else if (e.key === 'Enter' && e.shiftKey) {
     e.preventDefault();
-    if (input.value.trim()) { saveLine(input.value); input.value = ''; autosize(); document.body.classList.remove('singing-line'); }
+    if (input.value.trim()) { saveLine(input.value); input.value = ''; autosize(); }
   } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault(); toggleSong();
   } else if (e.key === ' ' && !input.value) {
     e.preventDefault(); toggleSong();
   } else if (e.key === 'Escape') {
     stopAll();
-  } else if (e.key === 'ArrowUp' && !input.value && song.lines.length) {
-    e.preventDefault(); input.value = song.lines[song.lines.length - 1].text; autosize();
+  } else if (e.key === 'ArrowUp' && !input.value && (lastSung || song.lines.length)) {
+    e.preventDefault(); input.value = lastSung || song.lines[song.lines.length - 1].text; autosize(); karaHide(false);
   }
 });
-input.addEventListener('input', () => { autosize(); if (document.body.classList.contains('singing-line')) document.body.classList.remove('singing-line'); });
-$('#send').addEventListener('click', () => { if (input.value.trim()) singLine(input.value); else toggleSong(); input.focus(); });
+function send() {
+  const v = input.value;
+  if (!v.trim()) { toggleSong(); return; }
+  input.value = '';
+  autosize();
+  singLine(v);
+}
+input.addEventListener('input', () => { autosize(); if (input.value) karaHide(false); });
+$('#send').addEventListener('click', () => { send(); input.focus(); });
 $('#dock').addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) setTimeout(() => input.focus(), 0); });
 window.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
@@ -509,7 +527,7 @@ function loop() {
         renderHistory();
       }
     }
-    const host = current.mode === 'song' ? kara : mirror;
+    const host = kara;
     host.querySelectorAll('.syl').forEach((s) => {
       const n = current.notes[+s.dataset.n];
       if (!n) return;

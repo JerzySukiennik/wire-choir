@@ -165,7 +165,8 @@ export function arrange(song, parsed, heads, opts = {}) {
     let bar = introBars;
     const cap = mood.feel === 8 ? 12 : 9;
     parsed.lines.forEach((l, li) => {
-      const bars = 2 * Math.ceil(l.syls.length / cap);
+      const S = l.syls.length;
+      const bars = S <= (mood.feel === 8 ? 5 : 3) ? 1 : 2 * Math.ceil(S / cap);
       lines.push({ i: li, b0: bar * 4, b1: (bar + bars) * 4, key: l.key, bars });
       bar += bars;
     });

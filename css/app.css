@@ -37,17 +37,16 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 
 #dock { position: fixed; left: 0; right: 0; bottom: 0; top: var(--stage); display: flex; flex-direction: column; justify-content: center; padding: 0 8vw env(safe-area-inset-bottom); }
 #field { position: relative; width: 100%; }
-#input, #mirror, #kara { font-family: var(--sf); font-size: clamp(26px, 3.4vw, 46px); line-height: 1.18; font-weight: 400; letter-spacing: -0.015em; }
+#input, #kara { font-family: var(--sf); font-size: clamp(26px, 3.4vw, 46px); line-height: 1.18; font-weight: 400; letter-spacing: -0.015em; }
 #input { width: 100%; resize: none; background: transparent; border: 0; outline: none; color: var(--ink); caret-color: var(--ink); overflow: hidden; display: block; }
 #input::placeholder { color: var(--ghost); }
 #input:focus-visible { outline: none; }
-#mirror, #kara { position: absolute; left: 0; top: 0; right: 0; pointer-events: none; white-space: pre-wrap; word-break: break-word; color: transparent; }
+#kara { position: absolute; left: 0; top: 0; right: 0; pointer-events: none; white-space: pre-wrap; word-break: break-word; color: var(--ink); transition: opacity 0.8s; }
 #kara { display: none; color: var(--ink); }
-body.singing-line #input { color: transparent; }
-body.playing-song #input, body.playing-song #mirror { visibility: hidden; }
-body.playing-song #kara { display: block; }
+body.kara-on #kara { display: block; }
+body.kara-on #input::placeholder { color: transparent; }
+body.kara-fade #kara { opacity: 0; }
 .syl { color: var(--faint); background-clip: text; -webkit-background-clip: text; }
-#mirror .syl { color: transparent; }
 #send { display: none; }
 #toast { position: absolute; left: 8vw; bottom: calc(14px + env(safe-area-inset-bottom)); font-size: 12px; color: var(--dim); opacity: 0; transition: opacity 0.3s; }
 #toast.show { opacity: 1; }
@@ -63,8 +62,8 @@ body.playing-song #kara { display: block; }
 .i2 .chip:hover { color: var(--ink); }
 .i2 .chip.on { color: #000; background: var(--ink); border-color: var(--ink); }
 .i2 #field { max-width: 760px; background: #0c0c0d; border: 1px solid #1f1f22; border-radius: 26px; padding: 16px 58px 16px 22px; }
-.i2 #input, .i2 #mirror, .i2 #kara { font-size: 19px; line-height: 1.4; letter-spacing: 0; }
-.i2 #mirror, .i2 #kara { left: 22px; top: 16px; right: 58px; }
+.i2 #input, .i2 #kara { font-size: 19px; line-height: 1.4; letter-spacing: 0; }
+.i2 #kara { left: 22px; top: 16px; right: 58px; }
 .i2 #send { display: grid; place-items: center; position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; background: var(--ink); color: #000; }
 .i2 #send svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .i2 #toast { left: 50%; transform: translateX(-50%); }
@@ -80,7 +79,7 @@ body.playing-song #kara { display: block; }
 .i3 .verse i { width: 6px; height: 6px; border-radius: 50%; flex: none; opacity: 0.8; }
 .i3 .verse:hover { color: var(--dim); }
 .i3 .verse.on { color: var(--ink); }
-.i3 #input, .i3 #mirror, .i3 #kara { font-size: clamp(22px, 2.5vw, 34px); }
+.i3 #input, .i3 #kara { font-size: clamp(22px, 2.5vw, 34px); }
 .i3 #field::before { content: ''; position: absolute; left: -16px; top: 0.55em; width: 6px; height: 6px; border-radius: 50%; background: var(--head, #4fd2ff); }
 
 /* Windows */
@@ -139,4 +138,3 @@ select { background: #111; color: var(--ink); border: 1px solid var(--line); bor
   #interp { top: 38px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-body.singing-line #mirror { color: var(--ink); }

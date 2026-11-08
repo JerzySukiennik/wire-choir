@@ -31,11 +31,11 @@ export class Player {
     });
   }
 
-  play(arr, parts, lang, heads) {
+  play(arr, parts, lang, heads, dur) {
     this.stop(true);
     const ctx = this.sys.ctx;
     this.t0 = ctx.currentTime + 0.12;
-    this.dur = arr.duration;
+    this.dur = dur || arr.duration;
     for (const h of heads) {
       const v = this.voices.get(h.id), p = parts[h.id];
       if (!v || !p) continue;
