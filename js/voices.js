@@ -16,7 +16,7 @@ export function noteName(m) { const r = Math.round(m); return NOTE_NAMES[((r % 1
 
 export const LOOKS = {
   wire: { pl: 'Wireframe', en: 'Wireframe', fx: 0, send: 0.35 },
-  jurek: { pl: 'Jurek', en: 'Jurek', fx: 0, send: 0.3, voice: { lo: 50, hi: 69, tract: 15.8, rd: 1.05, breath: 0.2, vib: 22, vibRate: 5.4, rough: 0.08 }, private: true },
+  jurek: { pl: 'Jurek', en: 'Jurek', fx: 0, send: 0.3, voice: { lo: 50, hi: 69, tract: 15.8, rd: 1.05, breath: 0.2, vib: 22, vibRate: 5.4, rough: 0.08 } },
   robot: { pl: 'Robot', en: 'Robot', fx: 1, send: 0.22, voice: { rd: 0.32, vib: 0, rough: 0, breath: 0.04 } },
   ghost: { pl: 'Duch', en: 'Ghost', fx: 2, send: 0.85, voice: { breath: 0.9, vib: 42, vibRate: 4.2, rough: 0.15 } },
 };

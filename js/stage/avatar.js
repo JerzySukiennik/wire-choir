@@ -1,11 +1,11 @@
-// Wire Choir avatar head: Jurek's local GLB (private, not published) driven by the same articulation params via ARKit morphs.
+// Wire Choir avatar head: Jurek's GLB avatar driven by the same articulation params via ARKit morphs.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { OPEN, LIPD, LIPR, TX, VOICE, FRIC } from '../voice/engine.js';
 
-const SRC = new URL('../../private/jurek_head_mobile.opt.glb', import.meta.url).href;
+const SRC = new URL('../../assets/jurek-head.glb', import.meta.url).href;
 let gltfPromise = null;
 let availPromise = null;
 
