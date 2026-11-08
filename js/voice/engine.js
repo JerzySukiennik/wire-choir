@@ -383,7 +383,7 @@ export class VoiceEngine {
     for (let j = Math.max(0, fi - 5); j <= fi; j++) if (tr.diam[j] < fd) fd = tr.diam[j];
     const fricOpen = smooth01((fd - 0.02) / 0.14) * (1 - smooth01((fd - 0.55) / 0.9));
     const bi = clamp(Math.round(this.burstX * n), 1, n - 1);
-    const gain = cfg.gain * 4.5;
+    const gain = cfg.gain * 2.6;
     let lvl = 0;
     for (let s = 0; s < B; s++) {
       const lam = (s + 1) / B;
@@ -400,11 +400,11 @@ export class VoiceEngine {
       let nv = 0;
       if (fric > 0.001) {
         const mod = voice > 0.1 ? 0.45 + 0.55 * g.flow : 1;
-        nv = this.fricF.run(rnd() * 2 - 1) * fric * fricOpen * mod * 0.9;
+        nv = this.fricF.run(rnd() * 2 - 1) * fric * fricOpen * mod * 0.022;
       }
       let bv = 0;
       if (this.burst > 0.002) {
-        bv = this.burstF.run(rnd() * 2 - 1) * this.burst * 1.6;
+        bv = this.burstF.run(rnd() * 2 - 1) * this.burst * 0.25;
         this.burst *= this.burstDecay;
       }
       let o = 0;

@@ -20,14 +20,17 @@ export class Player {
     for (const [id, v] of this.voices) if (!ids.has(id)) { v.dispose(); this.voices.delete(id); }
     heads.forEach((h, i) => {
       let v = this.voices.get(h.id);
+      const steps = h.role === 'lead' || h.role === 'harmony' ? this.sys.steps : 1;
+      if (v && v.steps !== steps) { v.dispose(); this.voices.delete(h.id); v = null; }
       if (!v) {
-        v = this.sys.voice({ cfg: engineCfg(h) });
+        v = this.sys.voice({ cfg: engineCfg(h), steps });
         v.onWord = (w) => this.onWord && this.onWord(h.id, w);
         this.voices.set(h.id, v);
       }
       const n = heads.length;
       const pan = n === 1 ? 0 : (i / (n - 1) - 0.5) * 0.9;
-      v.configure(Object.assign(engineCfg(h), { volume: (h.volume ?? 1) * (h.role === 'beatbox' ? 1.1 : h.role === 'choir' ? 0.8 : 1), pan: h.pan ?? pan }));
+      const share = 1.25 / Math.sqrt(Math.max(1, n));
+      v.configure(Object.assign(engineCfg(h), { volume: Math.min(1.25, share) * (h.volume ?? 1) * (h.role === 'beatbox' ? 1.1 : h.role === 'choir' ? 0.85 : 1), pan: h.pan ?? pan }));
     });
   }
 

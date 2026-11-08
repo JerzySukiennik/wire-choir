@@ -501,10 +501,13 @@ function renderSong(body) {
   body.append(row);
 }
 
-let last = performance.now(), statusT = 0;
+let last = performance.now(), statusT = 0, lastActive = 0;
 function loop() {
   requestAnimationFrame(loop);
   const now = performance.now();
+  const active = player.playing || previewing || dragP || [...player.voices.values()].some((v) => v.level > 0.001);
+  if (active) lastActive = now;
+  if (now - lastActive > 1500 && now - last < 40) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   stage.frame(dt);
@@ -548,4 +551,5 @@ window.addEventListener('resize', autosize);
 if (document.fonts) document.fonts.ready.then(autosize);
 setTimeout(autosize, 250);
 input.focus();
+window.__wc = { sys, player, stage };
 loop();

@@ -116,21 +116,21 @@ function drumSegs(type, t, amp) {
     const cl = vowelParams('u', 0); cl[LIPD] = 0; cl[VOICE] = 0.15 * amp; cl[VEL] = 0.15;
     push(t - 0.03, 0.03, cl, 75);
     const b = vowelParams('u', amp * 0.95); b[LIPD] = 0.25; b[OPEN] = 0.05;
-    push(t, 0.05, b, 62, 0.9 * amp, 0.985);
+    push(t, 0.05, b, 62, 3.2 * amp, 0.985);
     const b2 = vowelParams('u', amp * 0.4); b2[LIPD] = 0.1;
     push(t + 0.05, 0.05, b2, 45);
   } else if (type === 'S') {
     const cl = vowelParams('@', 0); cl[TX] = 0.64; cl[TD] = 0;
     push(t - 0.025, 0.025, cl);
     const f = vowelParams('@', 0); f[TIPX] = 0.83; f[TIPD] = 0.19; f[OPEN] = 0.2; f[LIPR] = 0.6; f[LIPD] = 1.0;
-    f[FRIC] = 1.0 * amp; f[FRICX] = 0.9; f[FRICF] = 3600; f[ASP] = 0.3 * amp;
-    push(t, 0.1, f, 0, 0.85 * amp, 0.7);
+    f[FRIC] = 18 * amp; f[FRICX] = 0.9; f[FRICF] = 3600; f[ASP] = 0.3 * amp;
+    push(t, 0.1, f, 0, 4 * amp, 0.7);
   } else if (type === 'H' || type === 'O') {
     const cl = vowelParams('i', 0); cl[TIPX] = 0.87; cl[TIPD] = 0; cl[OPEN] = 0.1;
     push(t - 0.015, 0.015, cl);
     const f = vowelParams('i', 0); f[TIPX] = 0.87; f[TIPD] = 0.1; f[OPEN] = 0.1;
-    f[FRIC] = (type === 'O' ? 0.9 : 0.75) * amp; f[FRICX] = 0.92; f[FRICF] = 7000;
-    push(t, type === 'O' ? 0.17 : 0.04, f, 0, 0.5 * amp, 0.92);
+    f[FRIC] = (type === 'O' ? 7 : 6) * amp; f[FRICX] = 0.92; f[FRICF] = 7000;
+    push(t, type === 'O' ? 0.17 : 0.04, f, 0, 2.2 * amp, 0.92);
   }
   const r = restParams(); r[OPEN] = 0.1;
   const end = s[s.length - 1];

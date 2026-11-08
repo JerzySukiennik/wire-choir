@@ -1,9 +1,5 @@
-// Wire Choir stage: one WebGL canvas, a panel per head (scissor viewports), shared bloom, flying words, slow orbit cameras.
+// Wire Choir stage: one WebGL canvas, a panel per head (scissor viewports), flying words, slow orbit cameras, no post-processing.
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Pass } from 'three/addons/postprocessing/Pass.js';
 import { WireHead } from './head.js';
 
 const texCache = new Map();
@@ -28,29 +24,6 @@ function wordTexture(text, color) {
   return v;
 }
 
-class PanelsPass extends Pass {
-  constructor(stage) { super(); this.stage = stage; this.needsSwap = false; }
-  render(renderer, writeBuffer, readBuffer) {
-    const st = this.stage;
-    const pr = st.pr;
-    renderer.setRenderTarget(readBuffer);
-    renderer.setClearColor(0x000000, 1);
-    readBuffer.scissorTest = false;
-    renderer.clear();
-    readBuffer.scissorTest = true;
-    for (const p of st.panels) {
-      const r = p.rect;
-      const H = st.height;
-      readBuffer.viewport.set(r.x * pr, (H - r.y - r.h) * pr, r.w * pr, r.h * pr);
-      readBuffer.scissor.set(r.x * pr, (H - r.y - r.h) * pr, r.w * pr, r.h * pr);
-      renderer.setRenderTarget(readBuffer);
-      renderer.render(p.scene, p.camera);
-    }
-    readBuffer.scissorTest = false;
-    readBuffer.viewport.set(0, 0, readBuffer.width, readBuffer.height);
-  }
-}
-
 export class Stage {
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
@@ -60,12 +33,7 @@ export class Stage {
     this.renderer.setPixelRatio(this.pr);
     this.panels = [];
     this.width = 1; this.height = 1;
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.setPixelRatio(this.pr);
-    this.composer.addPass(new PanelsPass(this));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), opts.bloom ?? 0.22, 0.0, 0.45);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    this.renderer.autoClear = false;
     this.layoutMode = opts.layout || 'auto';
     this.tmpV = new THREE.Vector3();
     this.time = 0;
@@ -96,7 +64,6 @@ export class Stage {
     if (w < 2 || h < 2) return;
     this.width = Math.max(1, Math.round(w)); this.height = Math.max(1, Math.round(h));
     this.renderer.setSize(this.width, this.height, false);
-    this.composer.setSize(this.width, this.height);
     this.relayout();
   }
 
@@ -189,6 +156,20 @@ export class Stage {
         w.sprite.scale.set(w.h * w.aspect * sc, w.h * sc, 1);
       }
     }
-    this.composer.render(dt);
+    this.render();
+  }
+
+  render() {
+    const r = this.renderer, H = this.height;
+    r.setScissorTest(false);
+    r.clear();
+    r.setScissorTest(true);
+    for (const p of this.panels) {
+      const q = p.rect, y = H - q.y - q.h;
+      r.setViewport(q.x, y, q.w, q.h);
+      r.setScissor(q.x, y, q.w, q.h);
+      r.render(p.scene, p.camera);
+    }
+    r.setScissorTest(false);
   }
 }

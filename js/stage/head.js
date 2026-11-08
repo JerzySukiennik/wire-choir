@@ -87,7 +87,7 @@ void main() {
 }`;
 const FRAG = `
 varying vec3 vColor;
-void main() { gl_FragColor = vec4(vColor, 1.0); }`;
+void main() { gl_FragColor = vec4(pow(max(vColor, vec3(0.0)), vec3(0.4545)), 1.0); }`;
 
 function lineMaterial() {
   return new THREE.ShaderMaterial({
