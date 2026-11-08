@@ -83,6 +83,7 @@ export class Voice {
     this.node.port.postMessage({ t: 'cfg', cfg });
     if (cfg.volume !== undefined) this.gain.gain.setTargetAtTime(cfg.volume, this.sys.ctx.currentTime, 0.02);
     if (cfg.pan !== undefined) this.pan.pan.setTargetAtTime(cfg.pan, this.sys.ctx.currentTime, 0.02);
+    if (cfg.send !== undefined) this.send.gain.setTargetAtTime(cfg.send, this.sys.ctx.currentTime, 0.05);
   }
   scheduleAt(segs, t0, replace) {
     this.node.port.postMessage({ t: 'segs', mode: 'abs', replace: !!replace, segs: segs.map((s) => ({ ...s, at: s.at + t0, p: Array.from(s.p) })) });

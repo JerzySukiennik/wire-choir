@@ -117,20 +117,20 @@ export class Glottis {
     const l = Math.log(f0);
     if (Math.abs(l - this.lf0t) > 0.01) {
       this.sinceNote = 0;
-      if (scoop) this.lf0 = l - 0.06;
+      if (scoop && !this.robot) this.lf0 = l - 0.06;
     }
     this.lf0t = l;
   }
   newPeriod(loud, rnd) {
     this.periodIdx++;
-    const rd = clamp(this.rdBase + (0.55 - loud) * 0.5, 0.3, 2.7);
+    const rd = this.robot ? 0.32 : clamp(this.rdBase + (0.55 - loud) * 0.5, 0.3, 2.7);
     this.rd = rd;
     this.lf = LF_TABLE[Math.round((rd - 0.3) * 100)];
-    this.shimmer = 1 + (rnd() - 0.5) * 0.12 * this.rough;
+    this.shimmer = this.robot ? 1 : 1 + (rnd() - 0.5) * 0.12 * this.rough;
     this.sub = this.rough > 0.5 ? (this.periodIdx & 1 ? -1 : 1) * (this.rough - 0.5) * 0.5 : 0;
   }
   step(loud, rnd) {
-    this.lf0 += (this.lf0t - this.lf0) * this.porta;
+    if (this.robot) { this.lf0 = this.lf0t; this.drift = 0; this.driftGoal = 0; } else this.lf0 += (this.lf0t - this.lf0) * this.porta;
     this.sinceNote += 1 / this.fs;
     const ve = this.sinceNote < 0.18 ? 0 : Math.min(1, (this.sinceNote - 0.18) / 0.45);
     this.vibEnv += (ve - this.vibEnv) * 0.001;
@@ -278,7 +278,7 @@ class Biquad {
   }
 }
 
-export const DEFAULT_CFG = { tract: 17, rd: 1.0, breath: 0.15, vib: 30, vibRate: 5.6, rough: 0.1, gain: 1, nasal: 0 };
+export const DEFAULT_CFG = { tract: 17, rd: 1.0, breath: 0.15, vib: 30, vibRate: 5.6, rough: 0.1, gain: 1, nasal: 0, fx: 0 };
 
 export class VoiceEngine {
   constructor(fs, steps, seed) {
@@ -312,7 +312,9 @@ export class VoiceEngine {
     const old = this.cfg.tract;
     Object.assign(this.cfg, c);
     const g = this.glottis;
-    g.rdBase = this.cfg.rd; g.vibDepth = this.cfg.vib; g.vibRate = this.cfg.vibRate; g.rough = this.cfg.rough;
+    g.rdBase = this.cfg.rd; g.vibDepth = this.cfg.fx === 1 ? 0 : this.cfg.vib; g.vibRate = this.cfg.vibRate; g.rough = this.cfg.fx === 1 ? 0 : this.cfg.rough;
+    g.robot = this.cfg.fx === 1;
+    if (!this.comb) { this.comb = new Float32Array(1024); this.combI = 0; this.ringPh = 0; this.holdN = 0; this.holdV = 0; this.tremPh = 0; }
     if (Math.abs(this.cfg.tract - old) > 0.05) this.tract = new Tract(this.fs, this.cfg.tract, this.steps);
   }
   clear(soft) {
@@ -396,7 +398,8 @@ export class VoiceEngine {
       this.aspHP += (this.aspLP - this.aspHP) * 0.02;
       const aspN = this.aspLP - this.aspHP;
       const breathy = cfg.breath * voice * (0.25 + 0.75 * g.flow);
-      const src = gv * voice + aspN * (asp * 0.9 + breathy * 0.6);
+      const ghost = cfg.fx === 2;
+      const src = gv * voice * (ghost ? 0.22 : 1) + aspN * (asp * 0.9 + breathy * 0.6 + (ghost ? voice * (0.6 + 0.5 * g.flow) : 0));
       let nv = 0;
       if (fric > 0.001) {
         const mod = voice > 0.1 ? 0.45 + 0.55 * g.flow : 1;
@@ -415,7 +418,20 @@ export class VoiceEngine {
       o /= steps;
       const y = o - this.hpx + 0.995 * this.hp;
       this.hpx = o; this.hp = y;
-      const v = y * gain;
+      let v = y * gain;
+      if (cfg.fx === 1) {
+        this.ringPh += 62 / this.fs; if (this.ringPh > 1) this.ringPh -= 1;
+        v *= 0.5 + 0.5 * Math.sin(this.ringPh * 6.283185307);
+        if (++this.holdN >= 4) { this.holdN = 0; this.holdV = Math.round(v * 40) / 40; }
+        v = this.holdV;
+        const ci = this.combI, dly = (ci + 1024 - 280) & 1023;
+        const c = v + this.comb[dly] * 0.5;
+        this.comb[ci] = c; this.combI = (ci + 1) & 1023;
+        v = (0.55 * v + 0.45 * c) * 1.9;
+      } else if (cfg.fx === 2) {
+        this.tremPh += 4.3 / this.fs; if (this.tremPh > 1) this.tremPh -= 1;
+        v *= 1.0 * (0.75 + 0.25 * Math.sin(this.tremPh * 6.283185307));
+      }
       out[off + s] = v;
       lvl += v * v;
     }

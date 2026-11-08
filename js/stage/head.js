@@ -92,6 +92,9 @@ attribute vec3 color;
 attribute float jw;
 attribute vec3 aux;
 attribute vec3 nrm;
+attribute float layer;
+uniform float uTime;
+uniform float uPx;
 uniform float uNear;
 uniform float uFar;
 uniform float uJaw;
@@ -104,6 +107,10 @@ varying vec3 vColor;
 void main() {
   vec3 p = position;
   p.y += uLarynx * aux.y + uBrow * aux.z;
+#ifdef POINTS
+  float wob = sin(uTime * 1.7 + position.y * 9.0 + position.x * 5.0) * 0.014;
+  p.x += wob; p.z += wob * 0.6; p.y += sin(uTime * 1.1 + position.z * 7.0) * 0.008;
+#endif
   p -= uPivot;
   float a = uJaw * jw;
   float c = cos(a), s = sin(a);
@@ -119,15 +126,26 @@ void main() {
   }
   float fade = 1.0 - 0.68 * clamp((-mv.z - uNear) / max(0.001, uFar - uNear), 0.0, 1.0);
   vColor = color * uGain * shade * fade * (1.0 - aux.x * smoothstep(0.004, 0.035, uMouth));
+#ifdef POINTS
+  vColor *= (layer > 0.5 ? 0.22 : 1.0) * (0.7 + 0.3 * sin(uTime * 5.0 + position.x * 41.0 + position.y * 33.0));
+  gl_PointSize = uPx * (1.1 + 1.3 * min(shade, 1.5));
+#endif
   gl_Position = projectionMatrix * mv;
 }`;
 const FRAG = `
 varying vec3 vColor;
-void main() { gl_FragColor = vec4(pow(max(vColor, vec3(0.0)), vec3(0.4545)), 1.0); }`;
+void main() {
+#ifdef POINTS
+  vec2 d = gl_PointCoord - 0.5;
+  if (dot(d, d) > 0.25) discard;
+#endif
+  gl_FragColor = vec4(pow(max(vColor, vec3(0.0)), vec3(0.4545)), 1.0);
+}`;
 
-function lineMaterial() {
+function lineMaterial(points) {
   return new THREE.ShaderMaterial({
-    uniforms: { uNear: { value: 5 }, uFar: { value: 8 }, uJaw: { value: 0 }, uMouth: { value: 0 }, uLarynx: { value: 0 }, uBrow: { value: 0 }, uPivot: { value: PIVOT.clone() }, uGain: { value: 1 } },
+    defines: points ? { POINTS: '' } : {},
+    uniforms: { uTime: { value: 0 }, uPx: { value: Math.min(2, window.devicePixelRatio || 1) }, uNear: { value: 5 }, uFar: { value: 8 }, uJaw: { value: 0 }, uMouth: { value: 0 }, uLarynx: { value: 0 }, uBrow: { value: 0 }, uPivot: { value: PIVOT.clone() }, uGain: { value: 1 } },
     vertexShader: VERT, fragmentShader: FRAG,
     transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -136,9 +154,10 @@ function lineMaterial() {
 const ZERO = [0, 0, 0];
 const NZ = { x: 0, y: 0, z: 0 };
 class Builder {
-  constructor() { this.pos = []; this.col = []; this.jw = []; this.aux = []; this.nrm = []; }
+  constructor() { this.pos = []; this.col = []; this.jw = []; this.aux = []; this.nrm = []; this.lay = []; this.layer = 0; }
   seg(a, b, c, ja, jb, xa, xb, na, nb) {
     this.pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+    this.lay.push(this.layer, this.layer);
     this.col.push(c.r, c.g, c.b, c.r, c.g, c.b);
     this.jw.push(ja || 0, jb ?? ja ?? 0);
     const A = xa || ZERO, B = xb || xa || ZERO;
@@ -162,6 +181,7 @@ class Builder {
     g.setAttribute('jw', new THREE.Float32BufferAttribute(this.jw, 1));
     g.setAttribute('aux', new THREE.Float32BufferAttribute(this.aux, 3));
     g.setAttribute('nrm', new THREE.Float32BufferAttribute(this.nrm, 3));
+    g.setAttribute('layer', new THREE.Float32BufferAttribute(this.lay, 1));
     return g;
   }
 }
@@ -195,10 +215,12 @@ export class WireHead {
     this.inner = new THREE.Group();
     this.group.add(this.inner);
     this.color = new THREE.Color(opts.color || '#4fd2ff');
+    this.points = opts.style === 'points';
+    if (this.points) this.color.lerp(new THREE.Color('#e8f4ff'), 0.55);
     this.wordColor = opts.wordColor || '#7dffb6';
-    this.mat = lineMaterial();
+    this.mat = lineMaterial(this.points);
     this.dynMat = lineMaterial();
-    this.staticLines = new THREE.LineSegments(this.buildStatic(), this.mat);
+    this.staticLines = this.points ? new THREE.Points(this.buildStatic(), this.mat) : new THREE.LineSegments(this.buildStatic(), this.mat);
     this.staticLines.frustumCulled = false;
     this.inner.add(this.staticLines);
     this.maxDyn = 7000;
@@ -210,6 +232,7 @@ export class WireHead {
     g.setAttribute('jw', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 2), 1));
     g.setAttribute('aux', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 6), 3));
     g.setAttribute('nrm', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 6), 3));
+    g.setAttribute('layer', new THREE.BufferAttribute(new Float32Array(this.maxDyn * 2), 1));
     this.dynGeo = g;
     this.dynLines = new THREE.LineSegments(g, this.dynMat);
     this.dynLines.frustumCulled = false;
@@ -292,6 +315,7 @@ export class WireHead {
       for (let k = 0; k <= 12; k++) { const t = (k / 12) * Math.PI * 2; nos.push(V(Math.sign(ex) * 0.07 + Math.cos(t) * 0.035, -0.2 + Math.sin(t) * 0.018, 1.03)); }
       b.poly(nos, col(C, 0.45), false, 0);
     }
+    b.layer = 1;
     for (let k = 0; k < 3; k++) {
       const sc = 0.88 - k * 0.07, pts = [];
       for (let t = 0; t <= 1.0001; t += 0.02) {
@@ -410,6 +434,7 @@ export class WireHead {
       m.uniforms.uBrow.value = this.brow;
     }
     this.mat.uniforms.uJaw.value = this.jaw;
+    this.mat.uniforms.uTime.value = t;
     this.mat.uniforms.uGain.value = 1.0 + lv * 0.15;
     this.nextBlink -= dt;
     if (this.nextBlink < 0) { this.blink = 1; this.nextBlink = 2.5 + Math.random() * 5; }
@@ -428,6 +453,7 @@ export class WireHead {
 
   _seg(ax, ay, az, bx, by, bz, r, g, b) {
     if (this.n >= this.maxDyn) return;
+    if (this.points) { r *= 0.5; g *= 0.5; b *= 0.5; }
     const o = this.n * 6, P = this.dPos, Cc = this.dCol;
     P[o] = ax; P[o + 1] = ay; P[o + 2] = az; P[o + 3] = bx; P[o + 4] = by; P[o + 5] = bz;
     Cc[o] = Cc[o + 3] = r; Cc[o + 1] = Cc[o + 4] = g; Cc[o + 2] = Cc[o + 5] = b;

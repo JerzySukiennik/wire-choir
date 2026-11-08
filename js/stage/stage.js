@@ -1,6 +1,9 @@
 // Wire Choir stage: one WebGL canvas, a panel per head (scissor viewports), flying words, slow orbit cameras, no post-processing.
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { WireHead } from './head.js';
+import { RobotHead } from './robot.js';
+import { AvatarHead } from './avatar.js';
 
 const texCache = new Map();
 function wordTexture(text, color) {
@@ -42,13 +45,29 @@ export class Stage {
   addPanel(opts) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 50);
-    const head = new WireHead({ color: opts.color, wordColor: opts.wordColor });
+    const head = this.makeHead(opts.look || 'wire', opts.color, opts.wordColor);
     head.group.scale.setScalar(opts.scale || 1);
     scene.add(head.group);
     const p = { id: opts.id, scene, camera, head, rect: { x: 0, y: 0, w: 1, h: 1 }, phase: opts.phase ?? this.panels.length * 1.7, words: [], yawOverride: null, overrideT: 0, source: opts.source || null, wordColor: opts.wordColor || '#7dffb6', drag: 0 };
     this.panels.push(p);
     this.relayout();
     return p;
+  }
+
+  env() {
+    if (!this._env) {
+      const pm = new THREE.PMREMGenerator(this.renderer);
+      this._env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+      pm.dispose();
+    }
+    return this._env;
+  }
+
+  makeHead(look, color, wordColor) {
+    if (look === 'robot') return new RobotHead({ color, wordColor, env: this.env() });
+    if (look === 'jurek') return new AvatarHead({ color, wordColor });
+    if (look === 'ghost') return new WireHead({ color, wordColor, style: 'points' });
+    return new WireHead({ color, wordColor });
   }
 
   removePanel(p) {

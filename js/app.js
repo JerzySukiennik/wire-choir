@@ -4,7 +4,8 @@ import { Player } from './player.js';
 import { Stage } from './stage/stage.js';
 import { parseLyrics, prepareLang } from './lyrics.js';
 import { arrange, buildParts, MOODS } from './composer.js';
-import { PRESETS, midiToHz, noteName, NOTE_NAMES } from './voices.js';
+import { PRESETS, LOOKS, midiToHz, noteName, NOTE_NAMES } from './voices.js';
+import { avatarAvailable } from './stage/avatar.js';
 import { REST_PARAMS } from './voice/engine.js';
 import { Win } from './ui/windows.js';
 
@@ -18,7 +19,7 @@ const T = {
     lines: (n) => (n === 0 ? 'Pusta piosenka' : n === 1 ? '1 linijka' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} linijki` : `${n} linijek`),
     roles: { lead: 'Prowadzi', harmony: 'Harmonia', choir: 'Chór', bass: 'Bas', beatbox: 'Beatbox' },
     moods: { happy: 'Radosny', ballad: 'Ballada', sad: 'Smutny', dark: 'Mroczny', hymn: 'Hymn' },
-    major: 'dur', minor: 'moll', head: 'Głowa', role: 'Rola', voice: 'Głos', register: 'Rejestr', throat: 'Gardło', breath: 'Oddech',
+    major: 'dur', minor: 'moll', head: 'Głowa', role: 'Rola', look: 'Wygląd i brzmienie', voice: 'Głos', register: 'Rejestr', throat: 'Gardło', breath: 'Oddech',
     soft: 'Miękkość', vib: 'Wibrato', rough: 'Chrypka', volume: 'Głośność', listen: 'Przytrzymaj, żeby posłuchać', remove: 'Usuń głowę',
     harm: 'Interwał', harms: { up3: 'Tercja wyżej', down3: 'Tercja niżej', down6: 'Seksta niżej', up5: 'Kwinta wyżej' },
     vowel: 'Samogłoska', density: 'Gęstość', dens: { calm: 'Spokojny', normal: 'Normalny', busy: 'Gęsty' },
@@ -34,7 +35,7 @@ const T = {
     lines: (n) => (n === 0 ? 'Empty song' : n === 1 ? '1 line' : `${n} lines`),
     roles: { lead: 'Lead', harmony: 'Harmony', choir: 'Choir', bass: 'Bass', beatbox: 'Beatbox' },
     moods: { happy: 'Happy', ballad: 'Ballad', sad: 'Sad', dark: 'Dark', hymn: 'Hymn' },
-    major: 'major', minor: 'minor', head: 'Head', role: 'Role', voice: 'Voice', register: 'Register', throat: 'Throat', breath: 'Breath',
+    major: 'major', minor: 'minor', head: 'Head', role: 'Role', look: 'Look and sound', voice: 'Voice', register: 'Register', throat: 'Throat', breath: 'Breath',
     soft: 'Softness', vib: 'Vibrato', rough: 'Rasp', volume: 'Volume', listen: 'Hold to listen', remove: 'Remove head',
     harm: 'Interval', harms: { up3: 'Third above', down3: 'Third below', down6: 'Sixth below', up5: 'Fifth above' },
     vowel: 'Vowel', density: 'Density', dens: { calm: 'Calm', normal: 'Normal', busy: 'Busy' },
@@ -53,7 +54,7 @@ const ROLE_PRESET = { lead: 'baritone', harmony: 'alto', choir: 'tenor', bass: '
 function newHead(role, idx) {
   const preset = ROLE_PRESET[role], p = PRESETS[preset];
   const [color, wordColor] = PALETTE[idx % PALETTE.length];
-  return { id: 'h' + Math.random().toString(36).slice(2, 8), role, preset, lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, rough: p.rough, shift: 0, volume: 1, color, wordColor, harm: 'up3', vowel: 'u', density: 'normal' };
+  return { id: 'h' + Math.random().toString(36).slice(2, 8), role, preset, look: 'wire', lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, vibRate: 5.6, rough: p.rough, shift: 0, volume: 1, color, wordColor, harm: 'up3', vowel: 'u', density: 'normal' };
 }
 const DEFAULT = () => ({ v: 1, lang: (navigator.languages || [navigator.language || '']).some((l) => /^pl/i.test(l)) ? 'pl' : 'en', mood: 'happy', key: 0, bpm: null, seed: 7, lines: [], heads: [newHead('lead', 0)] });
 
@@ -81,15 +82,17 @@ function syncPanels() {
   for (const [id, p] of panelOf) if (!ids.has(id)) { stage.removePanel(p); panelOf.delete(id); }
   song.heads.forEach((h, i) => {
     let p = panelOf.get(h.id);
-    if (p && p.color !== h.color) { stage.removePanel(p); panelOf.delete(h.id); p = null; }
+    const look = h.look || 'wire';
+    if (p && (p.color !== h.color || p.look !== look)) { stage.removePanel(p); panelOf.delete(h.id); p = null; }
     if (!p) {
-      p = stage.addPanel({ id: h.id, color: h.color, wordColor: h.wordColor, phase: i * 1.9, scale: 0.86 + (h.tract - 12) * 0.02, source: () => {
+      p = stage.addPanel({ id: h.id, look, color: h.color, wordColor: h.wordColor, phase: i * 1.9, scale: 0.86 + (h.tract - 12) * 0.02, source: () => {
         const v = player.voiceOf(h.id);
         if (!v) return idle;
         v.sample();
         return { params: v.params, level: v.level, f0Rel: Math.log2(v.f0 / midiToHz((h.lo + h.hi) / 2 + (h.shift || 0))) };
       } });
       p.color = h.color;
+      p.look = look;
       panelOf.set(h.id, p);
     }
     p.head.group.scale.setScalar(0.86 + (h.tract - 12) * 0.02);
@@ -325,6 +328,8 @@ function commit(opts = {}) {
 }
 
 let expanded = song.heads[0] ? song.heads[0].id : null;
+let hasAvatar = false;
+avatarAvailable().then((ok) => { hasAvatar = ok; renderWin('heads'); });
 function chips(items, cur, on) {
   const d = document.createElement('div');
   d.className = 'chips';
@@ -396,12 +401,20 @@ function renderHeads(body) {
   song.heads.forEach((h, i) => {
     const row = document.createElement('div');
     row.className = 'hrow';
-    row.innerHTML = `<i style="background:${h.color}"></i><b>${L.head} ${i + 1}</b><span>${L.roles[h.role]} · ${PRESETS[h.preset] ? PRESETS[h.preset][song.lang] : ''}</span>`;
+    row.innerHTML = `<i style="background:${h.color}"></i><b>${L.head} ${i + 1}</b><span>${L.roles[h.role]} · ${(LOOKS[h.look] || LOOKS.wire)[song.lang]}</span>`;
     row.addEventListener('click', () => { expanded = expanded === h.id ? null : h.id; renderHeads(body); });
     list.appendChild(row);
     if (expanded !== h.id) return;
     const ed = document.createElement('div');
     ed.className = 'hed';
+    const looks = Object.keys(LOOKS).filter((k) => k !== 'jurek' || hasAvatar);
+    ed.append(label(L.look), chips(looks.map((k) => [k, LOOKS[k][song.lang]]), h.look || 'wire', (k) => {
+      h.look = k;
+      const p = PRESETS[h.preset] || PRESETS.baritone;
+      Object.assign(h, { lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, vibRate: 5.6, rough: p.rough }, LOOKS[k].voice || {});
+      commit();
+      startPreview(h); setTimeout(stopPreview, 900);
+    }));
     ed.append(label(L.role), chips(ROLES.map((r) => [r, L.roles[r]]), h.role, (r) => { h.role = r; commit(); }));
     ed.append(label(L.voice), chips(Object.keys(PRESETS).map((k) => [k, PRESETS[k][song.lang]]), h.preset, (k) => {
       const p = PRESETS[k];
