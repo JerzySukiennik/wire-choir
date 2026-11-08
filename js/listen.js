@@ -371,7 +371,7 @@ export async function analyze(x, opts = {}) {
     else if (hv > 0.4 && !(aK.clear && aK.v[p] > 0.45)) pattern[p % 4 === 2 && hv > 0.7 ? 'O' : 'H'].push({ p, v: hv });
   }
   const drums = [];
-  const amps = { K: 1, S: 0.9, H: 0.55, O: 0.65 };
+  const amps = { K: 0.8, S: 0.8, H: 0.3, O: 0.34 };
   for (let b = 0; b < bars; b++) {
     if (barEnergy[b] < medE * 0.4) continue;
     for (const type of ['K', 'S', 'H', 'O']) for (const o of pattern[type]) drums.push({ b: b * 4 + o.p / 4, type, amp: +(amps[type] * (0.75 + 0.25 * o.v)).toFixed(2) });
