@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#000000">
+<title>Wire Choir</title>
+<meta name="description" content="Wpisz tekst, a neonowe głowy zaśpiewają go fizycznym modelem gardła.">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body class="i1">
+<canvas id="stage" aria-label="Śpiewające głowy"></canvas>
+<header id="bar">
+  <div class="bar-l">Wire Choir</div>
+  <button class="bar-c" id="status" data-open="song"></button>
+  <div class="bar-r" id="keys"></div>
+</header>
+<nav id="rail" aria-label="Panele">
+  <button data-open="heads" aria-label="Głowy"><svg viewBox="0 0 24 24"><path d="M12 3.5c-3.6 0-6 2.6-6 6 0 1.7.6 3 1.5 4l.2 2.3c.1.9.8 1.6 1.7 1.6H11v2.6h3.5v-2.6c2.6 0 4.2-1.6 4.2-4.1 0-.8.5-1.1.8-1.6.4-.6-.1-1.1-.6-1.4C18.6 6.6 16 3.5 12 3.5z"/></svg><span></span></button>
+  <button data-open="song" aria-label="Piosenka"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h12M4 17h8"/></svg><span></span></button>
+</nav>
+<div id="interp" role="group" aria-label="Interpretacja"><span>Interpretacja</span><button data-i="1">1 Pustka</button><button data-i="2">2 Prompt</button><button data-i="3">3 Wiersz</button></div>
+<main id="dock">
+  <div id="history"></div>
+  <div id="field">
+    <div id="kara" aria-live="polite"></div>
+    <div id="mirror" aria-hidden="true"></div>
+    <textarea id="input" rows="1" spellcheck="false" autocomplete="off" autocapitalize="sentences"></textarea>
+    <button id="send" aria-label="Zaśpiewaj"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+  </div>
+  <div id="toast" role="status"></div>
+</main>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

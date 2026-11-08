@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wire Choir · Lab</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#030507;--panel:#070b10;--line:#16212c;--line2:#22313f;--ink:#d7e6f2;--dim:#6d8294;--cyan:#5fd4ff;--mint:#7dffb6;--violet:#b48cff;--amber:#ffb454}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font-family:Geist,system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;padding:18px 18px 40px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.logo{font-family:'Geist Mono';letter-spacing:.42em;color:var(--cyan);font-size:15px;font-weight:500}
+.tag{font-family:'Geist Mono';font-size:11px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+.chip{font-family:'Geist Mono';font-size:10px;letter-spacing:.14em;text-transform:uppercase;border:1px solid var(--line2);border-radius:99px;padding:4px 9px;color:var(--amber)}
+.progress{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:18px;font-family:'Geist Mono';font-size:11px;color:var(--dim)}
+.progress span.ok{color:var(--mint)}
+.grid{display:grid;grid-template-columns:280px 1fr 300px;gap:14px}
+@media (max-width:1100px){.grid{grid-template-columns:1fr 1fr}.viz{grid-column:1/-1;order:-1}}
+@media (max-width:700px){.grid{grid-template-columns:1fr}body{padding:12px 16px 40px}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;position:relative;min-width:0}
+.panel h2{font-family:'Geist Mono';font-weight:500;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);margin-bottom:12px}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+button{font:inherit;color:inherit;background:none;border:1px solid var(--line2);border-radius:9px;padding:7px 11px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+button:hover{border-color:#36506a;background:#0b131b}
+button.on{border-color:var(--cyan);color:var(--cyan);background:#06202b}
+button:active{transform:translateY(1px)}
+.row{margin-bottom:12px}
+.row label{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:5px}
+.row label b{font-family:'Geist Mono';font-weight:400;color:var(--ink);font-size:11px}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:22px;background:none}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--line2);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--cyan);margin-top:-6px;box-shadow:0 0 10px #5fd4ff88}
+input[type=range]::-moz-range-track{height:2px;background:var(--line2)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--cyan);border:0}
+.viz{padding:0;overflow:hidden;display:flex;flex-direction:column}
+.viz canvas{width:100%;display:block}
+#head{height:min(62vh,560px);border-bottom:1px solid var(--line);background:#000;cursor:grab}
+#tract{height:190px}
+.readout{display:flex;gap:18px;padding:10px 14px;border-top:1px solid var(--line);font-family:'Geist Mono';font-size:11px;color:var(--dim)}
+.readout b{color:var(--ink);font-weight:400}
+.tests{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.tests button{text-align:left;padding:10px 11px}
+.tests button small{display:block;color:var(--dim);font-size:11px;margin-top:2px}
+.pad{position:relative;height:170px;border:1px solid var(--line2);border-radius:12px;touch-action:none;cursor:crosshair;background:radial-gradient(circle at 50% 50%,#0b1720,#05090d)}
+.pad .dot{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--mint);box-shadow:0 0 14px var(--mint);pointer-events:none}
+.pad .lbl{position:absolute;font-family:'Geist Mono';font-size:10px;color:var(--dim);pointer-events:none}
+.keys{position:relative;height:96px;margin-top:12px;display:flex;touch-action:none;user-select:none;-webkit-user-select:none}
+.key{flex:1;border:1px solid var(--line2);border-radius:0 0 7px 7px;margin-right:2px;background:#0a1016;position:relative;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font-family:'Geist Mono';font-size:9px;color:var(--dim)}
+.key.black{position:absolute;top:0;height:58%;width:calc(100%/15*0.62);background:#020406;z-index:2;border-color:#2b3c4d}
+.key.down{background:#0c2a35;border-color:var(--cyan);color:var(--cyan)}
+.key.black.down{background:#0c2a35}
+.hint{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5}
+.toggles{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+#start{position:fixed;inset:0;background:#030507ee;display:flex;align-items:center;justify-content:center;z-index:9;flex-direction:column;gap:16px}
+#start button{font-size:15px;padding:14px 26px;border-color:var(--cyan);color:var(--cyan)}
+</style>
+</head>
+<body>
+<div id="start"><div class="logo">WIRE CHOIR</div><button id="go">Włącz dźwięk</button><div class="tag">laboratorium głosu</div></div>
+<header>
+  <div class="logo">WIRE CHOIR</div>
+  <div class="tag">laboratorium głosu</div>
+  <div class="chip">w budowie</div>
+  <a href="warianty.html" class="chip" style="color:var(--cyan);text-decoration:none;margin-left:auto">Warianty UI →</a>
+</header>
+<div class="progress" id="progress"></div>
+<div class="grid">
+  <section class="panel">
+    <h2>Głos</h2>
+    <div class="presets" id="presets"></div>
+    <div id="sliders"></div>
+  </section>
+  <section class="panel viz">
+    <canvas id="head"></canvas>
+    <canvas id="tract"></canvas>
+    <div class="readout"><span>f0 <b id="rf0">-</b></span><span>nuta <b id="rnote">-</b></span><span>poziom <b id="rlvl">-</b></span><span>sekcje <b id="rn">-</b></span></div>
+  </section>
+  <section class="panel">
+    <h2>Testy</h2>
+    <div class="tests" id="tests"></div>
+    <h2>Graj na żywo</h2>
+    <div class="pad" id="pad"><div class="dot" id="dot"></div>
+      <span class="lbl" style="left:8px;top:6px">zamknięte · tył</span><span class="lbl" style="right:8px;top:6px">przód</span><span class="lbl" style="left:8px;bottom:6px">otwarte</span></div>
+    <div class="toggles"><button id="round">Zaokrąglone usta</button><button id="nasal">Nosowe</button></div>
+    <div class="keys" id="keys"></div>
+    <div class="hint">Przeciągaj po polu, żeby zmieniać samogłoskę. Graj klawiszami poniżej albo z klawiatury: A W S E D F T G Y H U J K. Z/X zmienia oktawę.</div>
+  </section>
+</div>
+<script type="module" src="js/lab.js"></script>
+</body>
+</html>
