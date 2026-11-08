@@ -332,6 +332,58 @@ export function buildParts(arr, heads) {
       }
     });
   }
+  const SYL = {
+    synth: [{ on: ['d'], nu: ['@'], co: ['n'] }, { on: ['w'], nu: ['a', 'u'], co: [] }],
+    guitar: [{ on: ['dZ'], nu: ['i'], co: ['n'] }, { on: ['dZ'], nu: ['a', 'u'], co: ['n'] }],
+    keys: [{ on: ['d'], nu: ['a'], co: ['m'] }, { on: ['d'], nu: ['a'], co: ['m'] }],
+    brass: [{ on: ['p'], nu: ['a'], co: [] }, { on: ['t'], nu: ['a'], co: [] }],
+    strings: [{ on: [], nu: ['a'], co: [] }, { on: [], nu: ['a'], co: [] }],
+    organ: [{ on: [], nu: ['o'], co: [] }, { on: [], nu: ['o'], co: [] }],
+    flute: [{ on: ['t'], nu: ['u'], co: [] }, { on: ['t'], nu: ['u'], co: [] }],
+  };
+  const leadNotes = arr.notes;
+  for (const h of heads.filter((x) => x.role === 'inst')) {
+    const type = SYL[h.inst] ? h.inst : 'synth';
+    const [shortS, longS] = SYL[type];
+    const center = (h.lo + h.hi) / 2 + (h.shift || 0);
+    const near = (pc, c = center) => { let best = 60, bd = 99; for (let m = 24; m < 100; m++) if (((m % 12) + 12) % 12 === pc && Math.abs(m - c) < bd) { bd = Math.abs(m - c); best = m; } return best; };
+    const list = parts[h.id].notes;
+    const push = (b, d, m, amp = 0.7) => list.push({ t: b * spb, d: d * spb, f0: midiToHz(m), m, amp, syl: d < 0.6 ? shortS : longS, w: -1 });
+    const riff = h.riff && arr.track && Array.isArray(arr.track.riff) && arr.track.riff.length ? arr.track.riff : null;
+    if (riff) {
+      const sh = fitOctave(riff.map((n) => n[2]), h.lo, h.hi, h.shift);
+      for (const [b, d, m0] of riff) { let m = m0 + sh; while (m < h.lo - 3) m += 12; while (m > h.hi + 3) m -= 12; push(b, d, m, 0.74); }
+      continue;
+    }
+    if (type === 'flute') {
+      const sh = fitOctave(leadNotes.map((n) => n.m), h.lo, h.hi, h.shift);
+      for (const n of leadNotes) push(n.b, n.d, n.m + sh, 0.6);
+      continue;
+    }
+    let prev = center;
+    const lastBar = arr.chords.length - 1;
+    arr.chords.forEach((ch, bi) => {
+      const b0 = ch.b;
+      if (bi === lastBar) { push(b0, 3.5, near(ch.pcs[0]), 0.6); return; }
+      if (type === 'synth') {
+        const tones = [ch.pcs[0], ch.pcs[1], ch.pcs[2], ch.pcs[1]];
+        for (let k = 0; k < 8; k++) push(b0 + k * 0.5, 0.42, near(tones[k % 4], center + (k % 4 === 2 ? 3 : 0)), 0.62);
+      } else if (type === 'guitar') {
+        for (let k = 0; k < 4; k++) push(b0 + k + 0.5, 0.32, near(ch.pcs[k % 2 ? 2 : 1]), 0.6);
+      } else if (type === 'keys') {
+        for (const [o, d] of [[0, 0.4], [0.75, 0.35], [1.5, 0.45], [2.5, 0.4], [3.25, 0.35]]) push(b0 + o, d, near(ch.pcs[1], center + 2), 0.58);
+      } else if (type === 'brass') {
+        const hits = bi % 2 ? [[2.5, 0.45], [3.5, 0.45]] : [[0, 0.8], [1.5, 0.45], [3, 0.5]];
+        for (const [o, d] of hits) push(b0 + o, d, near(ch.pcs[o % 1 ? 2 : 0]), 0.72);
+      } else {
+        let best = ch.pcs[0], bd = 99;
+        for (const pc of ch.pcs) { const m = near(pc, prev); if (Math.abs(m - prev) < bd) { bd = Math.abs(m - prev); best = m; } }
+        prev = best;
+        if (type === 'organ') { push(b0, 1.95, best, 0.55); push(b0 + 2, 1.95, near(ch.pcs[2], best), 0.55); }
+        else push(b0, 3.9, best, 0.55);
+      }
+    });
+  }
   for (const h of heads.filter((x) => x.role === 'beatbox')) {
     const dens = h.density || 'normal';
     const P = {

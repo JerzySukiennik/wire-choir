@@ -46,6 +46,7 @@ function cleanTrack(t) {
     chords: (Array.isArray(t.chords) ? t.chords.slice(0, 160) : []).map((c) => (Array.isArray(c) ? [num(c[0]) % 12, c[1] ? 1 : 0] : null)),
     bass: (Array.isArray(t.bass) ? t.bass.slice(0, 3000) : []).filter(Array.isArray).map((n) => [num(n[0]), Math.max(0.05, num(n[1])), Math.max(20, Math.min(90, num(n[2])))]),
     drums: (Array.isArray(t.drums) ? t.drums.slice(0, 6000) : []).filter((n) => Array.isArray(n) && 'KSHO'.includes(n[1])).map((n) => [num(n[0]), n[1], Math.max(0, Math.min(1.2, num(n[2])))]),
+    riff: (Array.isArray(t.riff) ? t.riff.slice(0, 3000) : []).filter(Array.isArray).map((n) => [num(n[0]), Math.max(0.05, num(n[1])), Math.max(30, Math.min(100, num(n[2])))]),
     src: t.src === 'mic' ? 'mic' : 'file',
   };
 }

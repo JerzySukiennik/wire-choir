@@ -4,7 +4,7 @@ import { Player } from './player.js';
 import { Stage } from './stage/stage.js';
 import { parseLyrics, prepareLang } from './lyrics.js';
 import { arrange, buildParts, MOODS } from './composer.js';
-import { PRESETS, LOOKS, midiToHz, noteName, NOTE_NAMES } from './voices.js';
+import { PRESETS, LOOKS, INSTS, applyInst, midiToHz, noteName, NOTE_NAMES } from './voices.js';
 import { avatarAvailable } from './stage/avatar.js';
 import { REST_PARAMS } from './voice/engine.js';
 import { Win } from './ui/windows.js';
@@ -23,7 +23,7 @@ const T = {
     placeholder: 'Napisz coś, co mają zaśpiewać', sing: 'zaśpiewaj', save: 'zapisz', play: 'odtwórz', stop: 'stop',
     saved: (n) => `Zapisano jako linijka ${n}`, singing: 'Śpiewa', heads: 'Głowy', song: 'Piosenka', addHead: 'Dodaj głowę',
     lines: (n) => (n === 0 ? 'Pusta piosenka' : n === 1 ? '1 linijka' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} linijki` : `${n} linijek`),
-    roles: { lead: 'Prowadzi', harmony: 'Harmonia', choir: 'Chór', bass: 'Bas', beatbox: 'Beatbox' },
+    roles: { lead: 'Prowadzi', harmony: 'Harmonia', choir: 'Chór', bass: 'Bas', beatbox: 'Beatbox', inst: 'Instrument' }, instLbl: 'Instrument',
     moods: { happy: 'Radosny', ballad: 'Ballada', sad: 'Smutny', dark: 'Mroczny', hymn: 'Hymn' },
     major: 'dur', minor: 'moll', head: 'Głowa', role: 'Rola', look: 'Wygląd i brzmienie', voice: 'Głos', register: 'Rejestr', throat: 'Gardło', breath: 'Oddech',
     soft: 'Miękkość', vib: 'Wibrato', rough: 'Chrypka', volume: 'Głośność', listen: 'Przytrzymaj, żeby posłuchać', remove: 'Usuń głowę',
@@ -34,13 +34,16 @@ const T = {
     noLead: 'Żadna głowa nie prowadzi, więc tekst nie zostanie zaśpiewany. Ustaw rolę „Prowadzi” w oknie Głowy.', maxHeads: 'Maksymalnie 6 głów', all: 'wszyscy',
     keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'dodaj do piosenki'], ['␣', 'odtwórz całość']], afterHint: [['⇧⏎', 'dodaj tę linijkę do piosenki'], ['↑', 'popraw']], who: 'Kto śpiewa: kliknij, żeby zmienić',
     notes: 'Nuty', play: 'Graj', exp: 'Eksport', listenWin: 'Słuchaj',
-    lsNote: 'Puść piosenkę obok mikrofonu albo wybierz plik. Chór odtworzy jej tempo, melodię, bas, rytm i akordy, a słowa wpiszesz sam.',
+    lsNote: 'Puść piosenkę obok mikrofonu albo wybierz plik. Chór usłyszy tempo, melodię, bas, rytm, akordy, instrumenty, słowa i język, a potem sam ustawi głowy i to zagra.',
+    lsRecognize: 'Rozpoznaj', lsWordsOpt: 'Słowa i język', lsHeadsOpt: 'Instrumenty i głowy', lsAuto: 'Auto', lsHeard: 'Słyszę', lsDrumsHeard: 'Perkusja',
+    lsVoice: { robot: 'Wokal robota', ghost: 'Szept', low: 'Niski wokal', voice: 'Wokal' },
+    lsStageBeat: 'Słucham rytmu i melodii…', lsStageInst: 'Rozpoznaję instrumenty…', lsStageModel: 'Pobieram model słów', lsStageWords: 'Słucham słów…', lsStageBuild: 'Ustawiam głowy…',
     lsMic: 'Nagrywaj z mikrofonu', lsStop: 'Zatrzymaj', lsFile: 'Wybierz plik', lsMicName: 'Nagranie z mikrofonu',
     lsNoMic: 'Brak dostępu do mikrofonu. Zezwól na niego w przeglądarce albo wybierz plik.', lsBadFile: 'Nie da się odczytać tego dźwięku. Spróbuj MP3, M4A albo WAV.',
     lsShort: 'Za krótko: potrzeba co najmniej 6 sekund.', lsPart: 'Fragment', lsDrag: 'przesuń po fali', lsWords: 'Słowa do melodii',
-    lsWordsPh: 'np. around the world (każda linijka to osobna fraza, puste: la la la)', lsLang: 'Język słów', lsAlso: 'Co jeszcze zaśpiewać', lsBass: 'Bas', lsDrums: 'Rytm',
+    lsWordsPh: 'Puste: słowa rozpozna Whisper. Możesz też wpisać własne, np. around the world.', lsLang: 'Język słów', lsAlso: 'Co jeszcze zaśpiewać', lsBass: 'Bas', lsDrums: 'Rytm',
     lsGo: 'Odtwórz w chórze', lsBusy: 'Słucham…', lsUndo: 'Cofnij', lsUndone: 'Przywrócono poprzednią piosenkę', lsReady: 'Chór odtworzył utwór',
-    lsReplace: 'Zastępuje obecną piosenkę. Brakujące głosy (bas, beatbox) dodadzą się same.', lsQuiet: 'Za cicho, nic nie słychać. Podgłośnij albo podejdź bliżej.',
+    lsReplace: 'Zastępuje obecną piosenkę i głowy. Model słów (ok. 80 MB) pobiera się tylko za pierwszym razem.', lsQuiet: 'Za cicho, nic nie słychać. Podgłośnij albo podejdź bliżej.',
     lsNoMelody: 'W tym fragmencie nie słychać melodii. Wybierz inny.',
     lsDone: (a, n) => `${Math.round(a.bpm)} BPM · ${['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'][a.key]}-${a.mode === 'minor' ? 'moll' : 'dur'} · ${a.bars} taktów · ${n} ${n === 1 ? 'linijka' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'linijki' : 'linijek'} · ${a.melody.length} nut melodii, ${a.bass.length} basu`,
     notesEmpty: 'Zapisz linijki (Shift+Enter), żeby zobaczyć ich nuty.', manual: 'Melodia ręczna', autoMelody: 'Melodia automatyczna', dragHint: 'przeciągaj nuty, krawędź zmienia długość', backToAuto: 'Wróć do automatu',
@@ -56,7 +59,7 @@ const T = {
     placeholder: 'Type something for them to sing', sing: 'sing', save: 'save', play: 'play', stop: 'stop',
     saved: (n) => `Saved as line ${n}`, singing: 'Singing', heads: 'Heads', song: 'Song', addHead: 'Add head',
     lines: (n) => (n === 0 ? 'Empty song' : n === 1 ? '1 line' : `${n} lines`),
-    roles: { lead: 'Lead', harmony: 'Harmony', choir: 'Choir', bass: 'Bass', beatbox: 'Beatbox' },
+    roles: { lead: 'Lead', harmony: 'Harmony', choir: 'Choir', bass: 'Bass', beatbox: 'Beatbox', inst: 'Instrument' }, instLbl: 'Instrument',
     moods: { happy: 'Happy', ballad: 'Ballad', sad: 'Sad', dark: 'Dark', hymn: 'Hymn' },
     major: 'major', minor: 'minor', head: 'Head', role: 'Role', look: 'Look and sound', voice: 'Voice', register: 'Register', throat: 'Throat', breath: 'Breath',
     soft: 'Softness', vib: 'Vibrato', rough: 'Rasp', volume: 'Volume', listen: 'Hold to listen', remove: 'Remove head',
@@ -67,13 +70,16 @@ const T = {
     noLead: 'No head is set to Lead, so the words won’t be sung. Set a head to “Lead” in the Heads window.', maxHeads: 'Up to 6 heads', all: 'everyone',
     keysHint: [['⏎', 'sing'], ['⇧⏎', 'add to song'], ['␣', 'play all']], afterHint: [['⇧⏎', 'add this line to the song'], ['↑', 'edit']], who: 'Who sings: click to change',
     notes: 'Notes', play: 'Play', exp: 'Export', listenWin: 'Listen',
-    lsNote: 'Play a song next to the microphone or pick a file. The choir rebuilds its tempo, melody, bass, beat and chords, and you type the words.',
+    lsNote: 'Play a song next to the microphone or pick a file. The choir hears the tempo, melody, bass, beat, chords, instruments, words and language, then sets up the heads and plays it.',
+    lsRecognize: 'Recognize', lsWordsOpt: 'Words and language', lsHeadsOpt: 'Instruments and heads', lsAuto: 'Auto', lsHeard: 'Heard', lsDrumsHeard: 'Drums',
+    lsVoice: { robot: 'Robot vocal', ghost: 'Whisper', low: 'Low vocal', voice: 'Vocal' },
+    lsStageBeat: 'Listening to beat and melody…', lsStageInst: 'Recognizing instruments…', lsStageModel: 'Downloading the words model', lsStageWords: 'Listening to the words…', lsStageBuild: 'Setting up the heads…',
     lsMic: 'Record from microphone', lsStop: 'Stop', lsFile: 'Choose a file', lsMicName: 'Microphone recording',
     lsNoMic: 'No microphone access. Allow it in the browser or pick a file.', lsBadFile: 'This audio cannot be read. Try MP3, M4A or WAV.',
     lsShort: 'Too short: at least 6 seconds are needed.', lsPart: 'Excerpt', lsDrag: 'slide along the wave', lsWords: 'Words for the melody',
-    lsWordsPh: 'e.g. around the world (each line is its own phrase, empty: la la la)', lsLang: 'Language of the words', lsAlso: 'Also sing', lsBass: 'Bass', lsDrums: 'Beat',
+    lsWordsPh: 'Empty: Whisper hears the words. You can also type your own, e.g. around the world.', lsLang: 'Language of the words', lsAlso: 'Also sing', lsBass: 'Bass', lsDrums: 'Beat',
     lsGo: 'Rebuild with the choir', lsBusy: 'Listening…', lsUndo: 'Undo', lsUndone: 'Previous song restored', lsReady: 'The choir rebuilt the track',
-    lsReplace: 'Replaces the current song. Missing voices (bass, beatbox) are added on their own.', lsQuiet: 'Too quiet to hear anything. Turn it up or move closer.',
+    lsReplace: 'Replaces the current song and heads. The words model (about 80 MB) downloads only the first time.', lsQuiet: 'Too quiet to hear anything. Turn it up or move closer.',
     lsNoMelody: 'No melody can be heard in this excerpt. Pick another one.',
     lsDone: (a, n) => `${Math.round(a.bpm)} BPM · ${['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'][a.key]} ${a.mode} · ${a.bars} bars · ${n} line${n === 1 ? '' : 's'} · ${a.melody.length} melody notes, ${a.bass.length} bass`,
     notesEmpty: 'Save lines (Shift+Enter) to see their notes.', manual: 'Hand-made melody', autoMelody: 'Automatic melody', dragHint: 'drag notes, the edge changes length', backToAuto: 'Back to automatic',
@@ -88,13 +94,15 @@ const T = {
 };
 
 const PALETTE = [['#4fd2ff', '#7dffb6'], ['#a58bff', '#ffc6f1'], ['#7dffb6', '#9fe8ff'], ['#ffb454', '#fff0c8'], ['#ff7ad9', '#d7c8ff'], ['#dfe8ff', '#7fe3ff']];
-const ROLES = ['lead', 'harmony', 'choir', 'bass', 'beatbox'];
-const ROLE_PRESET = { lead: 'baritone', harmony: 'alto', choir: 'tenor', bass: 'bass', beatbox: 'baritone' };
+const ROLES = ['lead', 'harmony', 'choir', 'bass', 'beatbox', 'inst'];
+const ROLE_PRESET = { lead: 'baritone', harmony: 'alto', choir: 'tenor', bass: 'bass', beatbox: 'baritone', inst: 'tenor' };
 
-function newHead(role, idx) {
+function newHead(role, idx, inst) {
   const preset = ROLE_PRESET[role], p = PRESETS[preset];
   const [color, wordColor] = PALETTE[idx % PALETTE.length];
-  return { id: 'h' + Math.random().toString(36).slice(2, 8), role, preset, look: 'wire', lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, vibRate: 5.6, rough: p.rough, shift: 0, volume: 1, color, wordColor, harm: 'up3', vowel: 'u', density: 'normal' };
+  const h = { id: 'h' + Math.random().toString(36).slice(2, 8), role, preset, look: 'wire', lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, vibRate: 5.6, rough: p.rough, shift: 0, volume: 1, color, wordColor, harm: 'up3', vowel: 'u', density: 'normal' };
+  if (role === 'inst') applyInst(h, inst || 'synth');
+  return h;
 }
 const DEFAULT = () => ({ v: 1, lang: (navigator.languages || [navigator.language || '']).some((l) => /^pl/i.test(l)) ? 'pl' : 'en', mood: 'happy', key: 0, bpm: null, seed: 7, lines: [], heads: [newHead('lead', 0)] });
 
@@ -459,7 +467,7 @@ function renderHeads(body) {
   song.heads.forEach((h, i) => {
     const row = document.createElement('div');
     row.className = 'hrow';
-    row.innerHTML = `<i style="background:${h.color}"></i><b>${L.head} ${i + 1}</b><span>${L.roles[h.role]} · ${(LOOKS[h.look] || LOOKS.wire)[song.lang]}</span>`;
+    row.innerHTML = `<i style="background:${h.color}"></i><b>${L.head} ${i + 1}</b><span>${h.role === 'inst' ? (INSTS[h.inst] || INSTS.synth)[song.lang] : L.roles[h.role]} · ${(LOOKS[h.look] || LOOKS.wire)[song.lang]}</span>`;
     row.addEventListener('click', () => { expanded = expanded === h.id ? null : h.id; renderHeads(body); });
     list.appendChild(row);
     if (expanded !== h.id) return;
@@ -473,7 +481,8 @@ function renderHeads(body) {
       commit();
       startPreview(h); setTimeout(stopPreview, 900);
     }));
-    ed.append(label(L.role), chips(ROLES.map((r) => [r, L.roles[r]]), h.role, (r) => { h.role = r; commit(); }));
+    ed.append(label(L.role), chips(ROLES.map((r) => [r, L.roles[r]]), h.role, (r) => { h.role = r; if (r === 'inst' && !h.inst) applyInst(h, 'synth'); commit(); }));
+    if (h.role === 'inst') ed.append(label(L.instLbl), chips(Object.keys(INSTS).map((k) => [k, INSTS[k][song.lang]]), h.inst || 'synth', (k) => { applyInst(h, k); commit(); startPreview(h); setTimeout(stopPreview, 800); }));
     ed.append(label(L.voice), chips(Object.keys(PRESETS).map((k) => [k, PRESETS[k][song.lang]]), h.preset, (k) => {
       const p = PRESETS[k];
       Object.assign(h, { preset: k, lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, rough: p.rough, shift: 0 });
@@ -791,6 +800,7 @@ const app = {
     return { t0Perf: performance.now() + (player.t0 - sys.ctx.currentTime) * 1000 };
   },
   saveRecording, recordVideo,
+  newHead: (role, idx, inst) => newHead(role, idx, inst),
   replaceSong(s) {
     player.stop(true);
     current = null;

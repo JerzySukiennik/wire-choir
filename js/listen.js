@@ -447,6 +447,29 @@ export async function analyze(x, opts = {}) {
   };
   melody = dropFlat(tidy(octaves(melody)));
   bass = tidy(bass);
+  const hush = (ns, offs) => {
+    for (const n of ns) for (let sl = Math.round(n.b * 4); sl < Math.round((n.b + n.d) * 4) && sl < slots; sl++) {
+      const v = melSlots[sl];
+      for (const o of offs) for (let k = n.m + o - 1 - MEL_LO; k <= n.m + o + 1 - MEL_LO; k++) if (k >= 0 && k < 37) v[k] = 0;
+    }
+  };
+  hush(melody, [-12, 0, 12, 19, 24]);
+  hush(bass, [12, 19, 24, 28, 31, 36]);
+  let riff = clean(track(melSlots, 37, MEL_LO, 0.35, 0.5, melOn), 0.25);
+  riff = dropFlat(tidy(octaves(riff)));
+  riff = riff.filter((n) => { const sl = Math.round(n.b * 4); return inKey(n.m) && !(sl < slots && hat[sl] > 0.45 && n.d <= 0.5 && melOn[sl] < hat[sl] * 1.2); });
+  const repeats = (ns) => {
+    const key2 = new Set(ns.map((n) => Math.round(n.b * 4) + ':' + (((n.m % 12) + 12) % 12)));
+    let best = 0;
+    for (const lag of [1, 2, 4]) {
+      let hit = 0, tot = 0;
+      for (const n of ns) { const sl = Math.round(n.b * 4); if (sl + lag * 16 >= slots) continue; tot++; if (key2.has(sl + lag * 16 + ':' + (((n.m % 12) + 12) % 12))) hit++; }
+      if (tot >= 6) best = Math.max(best, hit / tot);
+    }
+    return best;
+  };
+  const riffRep = riff.length >= 8 ? repeats(riff) : 0;
+  if (riff.length < 8 || riffRep < 0.45) riff = [];
   const chords = [];
   let prevC = null;
   for (let b = 0; b < bars; b++) {
@@ -471,6 +494,7 @@ export async function analyze(x, opts = {}) {
     bpm: +bpm.toFixed(2), key, mode, bars, start: (startF * HOP) / LSR, duration: dur,
     melody: melody.map(({ b, d, m }) => ({ b, d, m })),
     bass: bass.map(({ b, d, m }) => ({ b, d, m })),
+    riff: riff.map(({ b, d, m }) => ({ b, d, m })), riffRep: +riffRep.toFixed(2), melRep: +repeats(melody).toFixed(2),
     drums, chords, pattern: Object.fromEntries(Object.entries(pattern).map(([k, v]) => [k, v.map((o) => o.p)])),
   };
 }

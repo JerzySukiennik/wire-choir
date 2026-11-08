@@ -21,6 +21,25 @@ export const LOOKS = {
   ghost: { pl: 'Duch', en: 'Ghost', fx: 2, send: 0.85, voice: { breath: 0.9, vib: 42, vibRate: 4.2, rough: 0.15 } },
 };
 
+export const INSTS = {
+  synth: { pl: 'Syntezator', en: 'Synth', lo: 55, hi: 79, tract: 14.8, rd: 0.45, breath: 0.05, vib: 0, vibRate: 5.6, rough: 0.04, look: 'robot' },
+  guitar: { pl: 'Gitara', en: 'Guitar', lo: 52, hi: 74, tract: 15.6, rd: 0.7, breath: 0.08, vib: 6, vibRate: 5.6, rough: 0.06 },
+  keys: { pl: 'Klawisze', en: 'Keys', lo: 55, hi: 77, tract: 15.2, rd: 0.75, breath: 0.1, vib: 0, vibRate: 5.6, rough: 0.03 },
+  brass: { pl: 'Dęte', en: 'Brass', lo: 52, hi: 74, tract: 16.4, rd: 0.34, breath: 0.06, vib: 22, vibRate: 5.8, rough: 0.14 },
+  strings: { pl: 'Smyczki', en: 'Strings', lo: 57, hi: 81, tract: 14.4, rd: 1.15, breath: 0.28, vib: 38, vibRate: 5.4, rough: 0.03 },
+  organ: { pl: 'Organy', en: 'Organ', lo: 48, hi: 72, tract: 16, rd: 0.95, breath: 0.04, vib: 55, vibRate: 6.8, rough: 0.02 },
+  flute: { pl: 'Flet', en: 'Flute', lo: 69, hi: 88, tract: 12.4, rd: 1.45, breath: 0.7, vib: 24, vibRate: 5.2, rough: 0 },
+};
+
+export function applyInst(h, type) {
+  const p = INSTS[type] || INSTS.synth;
+  Object.assign(h, { inst: type, lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, vibRate: p.vibRate, rough: p.rough, shift: 0 });
+  if (p.look) h.look = p.look;
+  const lv = (LOOKS[h.look] || {}).voice;
+  if (lv && h.look === 'robot') Object.assign(h, { rd: Math.min(h.rd, lv.rd ?? h.rd), vib: 0 });
+  return h;
+}
+
 export function engineCfg(h) {
   const look = LOOKS[h.look] || LOOKS.wire;
   return { tract: h.tract, rd: h.rd, breath: h.breath, vib: h.vib, vibRate: h.vibRate || 5.6, rough: h.rough, gain: 1, fx: look.fx, send: look.send };
