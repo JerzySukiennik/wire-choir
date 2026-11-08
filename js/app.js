@@ -783,5 +783,18 @@ if (location.hash.startsWith('#s=')) {
     toast(t().loadedLink, 3000);
   }).catch(() => {});
 }
+if (window.visualViewport) {
+  const vv = window.visualViewport, root = document.documentElement;
+  const onVV = () => {
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    root.style.setProperty('--kb', kb + 'px');
+    root.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+    root.classList.toggle('kb-open', kb > 80);
+    if (kb > 80 && (window.scrollY || vv.offsetTop)) window.scrollTo(0, 0);
+    autosize();
+  };
+  vv.addEventListener('resize', onVV);
+  vv.addEventListener('scroll', onVV);
+}
 window.__wc = { sys, player, stage, app };
 loop();

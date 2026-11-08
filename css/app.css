@@ -9,6 +9,11 @@
   --mono: ui-monospace, 'SF Mono', Menlo, monospace;
   --stage: 75vh;
 }
+@supports (height: 100dvh) { :root { --stage: 75dvh; } }
+html.kb-open { --stage: calc(var(--vvh, 100vh) - 150px); }
+html.kb-open #dock { top: auto; bottom: var(--kb, 0px); padding-bottom: 12px; }
+html.kb-open #history { max-height: 0; margin: 0; }
+html.kb-open #hint, html.kb-open #rail { display: none; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: #000; color: var(--ink); font-family: var(--sf); -webkit-font-smoothing: antialiased; height: 100%; overflow: hidden; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -125,7 +130,8 @@ select { background: #111; color: var(--ink); border: 1px solid var(--line); bor
 .prog i { display: block; height: 100%; width: 0; background: var(--ink); }
 
 @media (max-width: 720px) {
-  :root { --stage: 64vh; }
+  :root { --stage: 70vh; }
+  @supports (height: 100dvh) { :root { --stage: 70dvh; } }
   #dock { padding: 0 22px calc(3vh + env(safe-area-inset-bottom)); }
   #rail { top: auto; bottom: calc(100vh - var(--stage) + 6px); transform: none; flex-direction: row; left: 12px; }
   #rail span { display: none; }

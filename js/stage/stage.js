@@ -39,6 +39,7 @@ export class Stage {
     this.renderer.autoClear = false;
     this.layoutMode = opts.layout || 'auto';
     this.tmpV = new THREE.Vector3();
+    this.tmpW = new THREE.Vector3();
     this.time = 0;
   }
 
@@ -191,6 +192,12 @@ export class Stage {
         w.sprite.position.addScaledVector(right, 0.05);
         const sc = 1 + w.age * 0.15;
         w.sprite.scale.set(w.h * w.aspect * sc, w.h * sc, 1);
+        this.tmpW.copy(w.sprite.position).addScaledVector(right, w.h * w.aspect * sc).project(p.camera);
+        if (this.tmpW.x > 0.94) {
+          const over = (this.tmpW.x - 0.94) / 2 * p.rect.w;
+          const perUnit = p.rect.h / (2 * Math.tan(p.camera.fov * Math.PI / 360) * p.camera.position.distanceTo(w.sprite.position));
+          w.sprite.position.addScaledVector(right, -over / perUnit);
+        }
       }
     }
     this.render();
