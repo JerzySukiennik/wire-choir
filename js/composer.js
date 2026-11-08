@@ -134,6 +134,11 @@ function genPitches(syls, starts, chordAt, R, isLastLine, lo, hi) {
   return out;
 }
 
+export function lineIds(parsed) {
+  const seen = {};
+  return parsed.lines.map((l) => { const k = l.key; seen[k] = (seen[k] || 0) + 1; return k + '#' + seen[k]; });
+}
+
 export function arrange(song, parsed, heads, opts = {}) {
   const mood = MOODS[song.mood] || MOODS.happy;
   const mode = mood.mode, key = song.key, bpm = song.bpm || mood.bpm, spb = 60 / bpm;
@@ -142,65 +147,55 @@ export function arrange(song, parsed, heads, opts = {}) {
   const backing = heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
   const introBars = backing && opts.intro !== false ? 1 : 0;
   const leads = heads.filter((h) => h.role === 'lead');
-  const explicit = !!(song.melody && song.melody.length);
+  const ids = lineIds(parsed);
+  const mel = song.melody && typeof song.melody === 'object' && !Array.isArray(song.melody) ? song.melody : {};
+  const cap = mood.feel === 8 ? 12 : 9;
   const lines = [];
-  const notes = [];
-  const lineOf = new Map();
-  parsed.lines.forEach((l, i) => l.syls.forEach((s) => lineOf.set(s.id, i)));
-  if (explicit) {
-    const byId = new Map(parsed.syls.map((s) => [s.id, s]));
-    for (const m of song.melody) {
-      const syl = byId.get(m.s);
-      if (!syl) continue;
-      notes.push({ s: m.s, line: lineOf.get(m.s), syl, b: m.b, d: m.d, m: m.m, step: midiToStep(m.m, key, mode), stress: syl.stress, w: syl.word, first: isFirst(parsed, syl) });
-    }
-    notes.sort((x, y) => x.b - y.b);
-    parsed.lines.forEach((l, i) => {
-      const ns = notes.filter((n) => n.line === i);
-      if (!ns.length) return;
-      const b0 = Math.min(...ns.map((n) => n.b)), b1 = Math.max(...ns.map((n) => n.b + n.d));
-      lines.push({ i, b0, b1, key: l.key, bars: Math.max(1, Math.ceil(b1 / 4) - Math.floor(b0 / 4)) });
-    });
-  } else {
-    let bar = introBars;
-    const cap = mood.feel === 8 ? 12 : 9;
-    parsed.lines.forEach((l, li) => {
-      const S = l.syls.length;
-      const bars = S <= (mood.feel === 8 ? 5 : 3) ? 1 : 2 * Math.ceil(S / cap);
-      lines.push({ i: li, b0: bar * 4, b1: (bar + bars) * 4, key: l.key, bars });
-      bar += bars;
-    });
-  }
+  let bar = introBars;
+  parsed.lines.forEach((l, li) => {
+    const S = l.syls.length;
+    const ex = mel[ids[li]];
+    const explicit = !!(ex && ex.notes && ex.notes.length === S);
+    const bars = explicit ? Math.max(1, ex.bars || 1) : S <= (mood.feel === 8 ? 5 : 3) ? 1 : 2 * Math.ceil(S / cap);
+    lines.push({ i: li, id: ids[li], b0: bar * 4, b1: (bar + bars) * 4, key: l.key, bars, explicit });
+    bar += bars;
+  });
   const lastLine = lines.length ? lines[lines.length - 1] : null;
   const endBar = lastLine ? Math.ceil(lastLine.b1 / 4) : introBars;
   const songBars = Math.max(1, endBar + (backing ? 1 : 0));
-  const chordForBar = (bar) => {
-    if (bar < introBars) return chordInfo(0, key, mode, true);
-    if (lastLine && bar >= endBar - 1) return chordInfo(0, key, mode, true);
-    if (lastLine && bar === endBar - 2 && lastLine.bars >= 2) return chordInfo(4, key, mode, true);
-    return chordInfo(prog[(bar - introBars) % prog.length], key, mode, mode === 'minor' && song.mood !== 'dark');
+  const chordForBar = (b) => {
+    if (b < introBars) return chordInfo(0, key, mode, true);
+    if (lastLine && b >= endBar - 1) return chordInfo(0, key, mode, true);
+    if (lastLine && b === endBar - 2 && lastLine.bars >= 2) return chordInfo(4, key, mode, true);
+    return chordInfo(prog[(b - introBars) % prog.length], key, mode, mode === 'minor' && song.mood !== 'dark');
   };
   const chords = [];
   for (let b = 0; b < songBars; b++) chords.push({ ...chordForBar(b), b: b * 4, d: 4 });
   const chordAt = (b) => chords[Math.max(0, Math.min(chords.length - 1, Math.floor(b / 4)))];
-  if (!explicit) {
-    lines.forEach((ln, li) => {
-      const l = parsed.lines[ln.i];
-      const S = l.syls.length;
-      const R = rng((song.seed * 31 + l.key) >>> 0);
-      const syls = l.syls.map((s, i) => ({ ...s, wordEnd: i === S - 1 || l.syls[i + 1].word !== s.word }));
-      const rh = bestRhythm(syls, ln.bars, mood.feel, R);
-      const starts = [];
-      let p = rh.off;
-      for (let i = 0; i < S; i++) { starts.push(ln.b0 + p / 2); p += rh.dur[i]; }
-      const steps = genPitches(syls, starts, chordAt, R, li === lines.length - 1, -2, 9);
-      const ed = (song.edits && song.edits[l.key]) || {};
-      for (let i = 0; i < S; i++) {
-        const st = steps[i] + (ed[i] || 0);
-        notes.push({ s: l.syls[i].id, line: ln.i, syl: l.syls[i], b: starts[i], d: rh.dur[i] / 2, step: st, m: stepToMidi(st, key, mode), stress: l.syls[i].stress, w: l.syls[i].word, first: i === 0 || l.syls[i - 1].word !== l.syls[i].word, li: i, edited: !!ed[i] });
+  const notes = [];
+  lines.forEach((ln, li) => {
+    const l = parsed.lines[ln.i];
+    const S = l.syls.length;
+    const first = (i) => i === 0 || l.syls[i - 1].word !== l.syls[i].word;
+    if (ln.explicit) {
+      for (const n of mel[ln.id].notes) {
+        const syl = l.syls[n.i];
+        notes.push({ s: syl.id, line: ln.i, syl, b: ln.b0 + n.b, d: n.d, m: n.m, step: midiToStep(n.m, key, mode), stress: syl.stress, w: syl.word, first: first(n.i), li: n.i, edited: true });
       }
-    });
-  }
+      return;
+    }
+    const R = rng((song.seed * 31 + l.key) >>> 0);
+    const syls = l.syls.map((s, i) => ({ ...s, wordEnd: i === S - 1 || l.syls[i + 1].word !== s.word }));
+    const rh = bestRhythm(syls, ln.bars, mood.feel, R);
+    const starts = [];
+    let p = rh.off;
+    for (let i = 0; i < S; i++) { starts.push(ln.b0 + p / 2); p += rh.dur[i]; }
+    const steps = genPitches(syls, starts, chordAt, R, li === lines.length - 1, -2, 9);
+    for (let i = 0; i < S; i++) {
+      notes.push({ s: l.syls[i].id, line: ln.i, syl: l.syls[i], b: starts[i], d: rh.dur[i] / 2, step: steps[i], m: stepToMidi(steps[i], key, mode), stress: l.syls[i].stress, w: l.syls[i].word, first: first(i), li: i, edited: false });
+    }
+  });
+  notes.sort((x, y) => x.b - y.b);
   const singersOf = (li, idx) => {
     const set = song.lineSingers && song.lineSingers[li];
     const valid = set ? set.filter((id) => leads.some((h) => h.id === id)) : [];
@@ -211,7 +206,14 @@ export function arrange(song, parsed, heads, opts = {}) {
     return [leads[idx % leads.length].id];
   };
   lines.forEach((l, idx) => { l.singers = singersOf(l.i, idx); });
-  return { bpm, spb, key, mode, mood: song.mood, introBars, totalBeats: songBars * 4, duration: songBars * 4 * spb + 1.5, chords, notes, lines, lang: parsed.lang, explicit };
+  return { bpm, spb, key, mode, mood: song.mood, introBars, totalBeats: songBars * 4, duration: songBars * 4 * spb + 1.5, chords, notes, lines, lang: parsed.lang, explicit: lines.some((l) => l.explicit) };
+}
+
+export function snapToScale(m, key, mode) {
+  const sc = SCALES[mode];
+  const pc = (((Math.round(m) - key) % 12) + 12) % 12;
+  if (sc.includes(pc)) return Math.round(m);
+  return Math.round(m) + (sc.includes((pc + 1) % 12) ? 1 : -1);
 }
 
 function isFirst(parsed, syl) {

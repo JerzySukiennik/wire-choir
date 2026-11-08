@@ -79,6 +79,22 @@ export class Stage {
     this.relayout();
   }
 
+  beginRecord(w, h) {
+    this.recording = true;
+    this._pr = this.pr;
+    this.pr = 1;
+    this.renderer.setPixelRatio(1);
+    this.width = w; this.height = h;
+    this.renderer.setSize(w, h, false);
+    this.relayout();
+  }
+
+  endRecord() {
+    this.recording = false;
+    this.pr = this._pr || this.pr;
+    this.renderer.setPixelRatio(this.pr);
+  }
+
   setSize(w, h) {
     if (w < 2 || h < 2) return;
     this.width = Math.max(1, Math.round(w)); this.height = Math.max(1, Math.round(h));
@@ -93,7 +109,7 @@ export class Stage {
     const portrait = H > W * 1.15;
     let cols, rows;
     if (this.layoutMode === 'row') {
-      const maxC = portrait ? 2 : W / H > 2.2 ? 6 : 4;
+      const maxC = portrait ? (n <= 3 ? 1 : 2) : W / H > 2.2 ? 6 : 4;
       cols = Math.min(n, maxC); rows = Math.ceil(n / cols);
     } else if (n === 1) { cols = 1; rows = 1; }
     else if (n === 2) { cols = portrait ? 1 : 2; rows = portrait ? 2 : 1; }

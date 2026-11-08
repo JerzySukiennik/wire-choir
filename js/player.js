@@ -3,6 +3,13 @@ import { planNotes, planDrums, planLiveOn, planLiveOff } from './voice/planner.j
 import { engineCfg, midiToHz } from './voices.js';
 import { vowelParams } from './voice/phonemes.js';
 
+export function voiceMix(heads, i, h) {
+  const n = heads.length;
+  const pan = n === 1 ? 0 : (i / (n - 1) - 0.5) * 0.9;
+  const share = Math.min(1.25, 1.25 / Math.sqrt(Math.max(1, n)));
+  return { volume: share * (h.volume ?? 1) * (h.role === 'beatbox' ? 1.1 : h.role === 'choir' ? 0.85 : 1), pan: h.pan ?? pan };
+}
+
 export class Player {
   constructor(sys) {
     this.sys = sys;
@@ -27,10 +34,7 @@ export class Player {
         v.onWord = (w) => this.onWord && this.onWord(h.id, w);
         this.voices.set(h.id, v);
       }
-      const n = heads.length;
-      const pan = n === 1 ? 0 : (i / (n - 1) - 0.5) * 0.9;
-      const share = 1.25 / Math.sqrt(Math.max(1, n));
-      v.configure(Object.assign(engineCfg(h), { volume: Math.min(1.25, share) * (h.volume ?? 1) * (h.role === 'beatbox' ? 1.1 : h.role === 'choir' ? 0.85 : 1), pan: h.pan ?? pan }));
+      v.configure(Object.assign(engineCfg(h), voiceMix(heads, i, h)));
     });
   }
 

@@ -8,6 +8,11 @@ import { PRESETS, LOOKS, midiToHz, noteName, NOTE_NAMES } from './voices.js';
 import { avatarAvailable } from './stage/avatar.js';
 import { REST_PARAMS } from './voice/engine.js';
 import { Win } from './ui/windows.js';
+import { mountNotes } from './ui/notes.js';
+import { mountPlay } from './ui/play.js';
+import { mountExport } from './ui/export.js';
+import { decodeSong, videoMime } from './share.js';
+import { lineIds } from './composer.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -28,6 +33,14 @@ const T = {
     noLead: 'Żadna głowa nie prowadzi, więc tekst nie zostanie zaśpiewany. Ustaw rolę „Prowadzi” w oknie Głowy.', maxHeads: 'Maksymalnie 6 głów', all: 'wszyscy',
     keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'dodaj do piosenki'], ['␣', 'odtwórz całość']], afterHint: [['⇧⏎', 'dodaj tę linijkę do piosenki'], ['↑', 'popraw']], who: 'Kto śpiewa: kliknij, żeby zmienić',
     notes: 'Nuty', play: 'Graj', exp: 'Eksport',
+    notesEmpty: 'Zapisz linijki (Shift+Enter), żeby zobaczyć ich nuty.', manual: 'Melodia ręczna', autoMelody: 'Melodia automatyczna', dragHint: 'przeciągaj nuty, krawędź zmienia długość', backToAuto: 'Wróć do automatu',
+    playNote: 'Każdy klawisz śpiewa kolejną sylabę piosenki. Harmonia dośpiewuje sama. Nagrane nuty zastępują melodię zaśpiewanych linijek.', playEmpty: 'Zapisz linijki albo wpisz tekst na dole, żeby było co śpiewać.',
+    midiNone: 'Brak MIDI: graj myszką albo klawiaturą', recording: 'Nagrywanie…', keysOn: 'Klawiatura komputera: wł.', keysOff: 'Klawiatura komputera: wył.', fromStart: 'Od początku', record: 'Nagrywaj', stopRec: 'Zakończ nagranie',
+    recorded: (n) => (n ? `Nagrano ${n} ${n === 1 ? 'linijkę' : n < 5 ? 'linijki' : 'linijek'} jako melodię ręczną` : 'Nagranie nie objęło całej linijki, nic nie zmieniono'),
+    expLink: 'Link', expLinkNote: 'Tekst, melodia i głowy w jednym linku.', copyLink: 'Kopiuj link', linkCopied: 'Skopiowano link do piosenki',
+    expWav: 'Dźwięk', expWavNote: 'Cała piosenka w pełnej jakości jako plik WAV.', downloadWav: 'Pobierz WAV', wavDone: 'Plik WAV gotowy',
+    expVideo: 'Wideo', expVideoNote: 'Piosenka gra od początku i nagrywa się razem z głowami i tekstem. Nie przełączaj karty w trakcie.', noVideo: 'Ta przeglądarka nie nagrywa wideo.',
+    vertical: 'Pion 9:16', horizontal: 'Poziom 16:9', recordVideo: 'Nagraj wideo', videoDone: 'Wideo gotowe', needLines: 'Najpierw zapisz linijki piosenki (Shift+Enter).', exportFail: 'Eksport się nie udał:', loadedLink: 'Wczytano piosenkę z linku',
   },
   en: {
     placeholder: 'Type something for them to sing', sing: 'sing', save: 'save', play: 'play', stop: 'stop',
@@ -44,6 +57,14 @@ const T = {
     noLead: 'No head is set to Lead, so the words won’t be sung. Set a head to “Lead” in the Heads window.', maxHeads: 'Up to 6 heads', all: 'everyone',
     keysHint: [['⏎', 'sing'], ['⇧⏎', 'add to song'], ['␣', 'play all']], afterHint: [['⇧⏎', 'add this line to the song'], ['↑', 'edit']], who: 'Who sings: click to change',
     notes: 'Notes', play: 'Play', exp: 'Export',
+    notesEmpty: 'Save lines (Shift+Enter) to see their notes.', manual: 'Hand-made melody', autoMelody: 'Automatic melody', dragHint: 'drag notes, the edge changes length', backToAuto: 'Back to automatic',
+    playNote: 'Every key sings the next syllable of the song. Harmony follows on its own. Recorded notes replace the melody of the lines you sang.', playEmpty: 'Save lines or type text below so there is something to sing.',
+    midiNone: 'No MIDI: play with the mouse or keyboard', recording: 'Recording…', keysOn: 'Computer keys: on', keysOff: 'Computer keys: off', fromStart: 'From the start', record: 'Record', stopRec: 'Finish recording',
+    recorded: (n) => (n ? `Recorded ${n} line${n === 1 ? '' : 's'} as a hand-made melody` : 'The take did not cover a whole line, nothing changed'),
+    expLink: 'Link', expLinkNote: 'Words, melody and heads in one link.', copyLink: 'Copy link', linkCopied: 'Song link copied',
+    expWav: 'Audio', expWavNote: 'The whole song in full quality as a WAV file.', downloadWav: 'Download WAV', wavDone: 'WAV file ready',
+    expVideo: 'Video', expVideoNote: 'The song plays from the start and records with the heads and words. Stay on this tab meanwhile.', noVideo: 'This browser cannot record video.',
+    vertical: 'Vertical 9:16', horizontal: 'Horizontal 16:9', recordVideo: 'Record video', videoDone: 'Video ready', needLines: 'Save song lines first (Shift+Enter).', exportFail: 'Export failed:', loadedLink: 'Song loaded from the link',
   },
 };
 
@@ -72,6 +93,7 @@ async function ensureAudio() {
   if (!audioReady) { audioReady = true; player.sync(song.heads); }
 }
 
+let hasAvatar = false;
 const canvas = $('#stage');
 const stage = new Stage(canvas, { layout: 'row' });
 stage.gap = 0;
@@ -82,7 +104,7 @@ function syncPanels() {
   for (const [id, p] of panelOf) if (!ids.has(id)) { stage.removePanel(p); panelOf.delete(id); }
   song.heads.forEach((h, i) => {
     let p = panelOf.get(h.id);
-    const look = h.look || 'wire';
+    const look = h.look === 'jurek' && !hasAvatar ? 'wire' : h.look || 'wire';
     if (p && (p.color !== h.color || p.look !== look)) { stage.removePanel(p); panelOf.delete(h.id); p = null; }
     if (!p) {
       p = stage.addPanel({ id: h.id, look, color: h.color, wordColor: h.wordColor, phase: i * 1.9, scale: 0.86 + (h.tract - 12) * 0.02, source: () => {
@@ -100,7 +122,7 @@ function syncPanels() {
   stage.panels.sort((a, b) => song.heads.findIndex((h) => h.id === a.id) - song.heads.findIndex((h) => h.id === b.id));
   stage.relayout();
 }
-new ResizeObserver(() => stage.setSize(canvas.clientWidth, canvas.clientHeight)).observe(canvas);
+new ResizeObserver(() => { if (!stage.recording) stage.setSize(canvas.clientWidth, canvas.clientHeight); }).observe(canvas);
 stage.setSize(canvas.clientWidth, canvas.clientHeight);
 syncPanels();
 
@@ -117,10 +139,11 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => { if (!dragP) return; dragP.yawOverride += (e.clientX - dragX) * 0.008; dragX = e.clientX; dragP.overrideT = 5; });
 canvas.addEventListener('pointerup', () => { dragP = null; });
 
-let current = null;
+let current = null, liveParsed = null;
 player.onWord = (hid, w) => {
   const p = panelOf.get(hid);
-  const word = current && current.parsed.words[w];
+  const src = current ? current.parsed : liveParsed;
+  const word = src && src.words[w];
   if (p && word) stage.emitWord(p, word.text);
 };
 let karaToken = 0;
@@ -166,7 +189,7 @@ async function singLine(text) {
   if (!parsed.syls.length) return;
   const leads = song.heads.filter((h) => h.role === 'lead').map((h) => h.id);
   if (!leads.length) toast(t().noLead, 4200);
-  const arr = arrange({ ...song, melody: null, lineSingers: { 0: leads } }, parsed, song.heads, { intro: false });
+  const arr = arrange({ ...song, lineSingers: { 0: leads } }, parsed, song.heads, { intro: false });
   const parts = buildParts(arr, song.heads);
   const notes = arr.notes.map((n) => ({ ...n, t0: n.b * arr.spb, t1: (n.b + n.d) * arr.spb }));
   const backing = song.heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
@@ -301,20 +324,35 @@ $('#history').addEventListener('click', (e) => {
 
 
 const wins = {};
+const MODS = { notes: mountNotes, play: mountPlay, export: mountExport };
+const TITLE = { heads: () => t().heads, song: () => t().song, notes: () => t().notes, play: () => t().play, export: () => t().exp };
 function openWin(name) {
   if (wins[name]) { wins[name].close(); return; }
-  const cfg = { heads: { title: t().heads, w: 340, h: 520, x: 60, y: 50 }, song: { title: t().song, w: 380, h: 470, x: Math.max(60, window.innerWidth - 440), y: 50 } }[name];
-  const w = new Win(name, cfg.title, cfg);
-  w.onClose = () => { delete wins[name]; document.querySelector(`#rail [data-open="${name}"]`)?.classList.remove('on'); };
+  const W = window.innerWidth, H = window.innerHeight;
+  const cfg = {
+    heads: { w: 340, h: 520, x: 60, y: 50 },
+    song: { w: 380, h: 470, x: Math.max(60, W - 440), y: 50 },
+    notes: { w: Math.min(900, W - 140), h: 330, x: 70, y: Math.max(50, H * 0.42) },
+    play: { w: 520, h: 330, x: Math.max(60, W / 2 - 260), y: Math.max(50, H * 0.4) },
+    export: { w: 340, h: 430, x: Math.max(60, W - 400), y: 60 },
+  }[name];
+  const w = new Win(name, TITLE[name](), cfg);
+  w.onClose = () => {
+    if (w.ctrl) w.ctrl.destroy();
+    delete wins[name];
+    document.querySelector(`#rail [data-open="${name}"]`)?.classList.remove('on');
+  };
   wins[name] = w;
   document.querySelector(`#rail [data-open="${name}"]`)?.classList.add('on');
-  renderWin(name);
+  if (MODS[name]) w.ctrl = MODS[name](w.body, app);
+  else renderWin(name);
 }
 function renderWin(name) {
   const w = wins[name];
   if (!w) return;
-  w.el.querySelector('.win-t').textContent = name === 'heads' ? t().heads : t().song;
-  if (name === 'heads') renderHeads(w.body); else renderSong(w.body);
+  w.el.querySelector('.win-t').textContent = TITLE[name]();
+  if (w.ctrl) { w.ctrl.refresh(); return; }
+  if (name === 'heads') renderHeads(w.body); else if (name === 'song') renderSong(w.body);
 }
 document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openWin(b.dataset.open)));
 
@@ -323,13 +361,13 @@ function commit(opts = {}) {
   syncPanels();
   if (audioReady) player.sync(song.heads);
   if (!opts.keepWins) { renderWin('heads'); renderWin('song'); }
+  renderWin('notes'); renderWin('play');
   renderHistory();
   renderChrome();
 }
 
 let expanded = song.heads[0] ? song.heads[0].id : null;
-let hasAvatar = false;
-avatarAvailable().then((ok) => { hasAvatar = ok; renderWin('heads'); });
+avatarAvailable().then((ok) => { hasAvatar = ok; if (ok) syncPanels(); renderWin('heads'); });
 function chips(items, cur, on) {
   const d = document.createElement('div');
   d.className = 'chips';
@@ -516,12 +554,14 @@ let last = performance.now(), statusT = 0, lastActive = 0;
 function loop() {
   requestAnimationFrame(loop);
   const now = performance.now();
-  const active = player.playing || previewing || dragP || [...player.voices.values()].some((v) => v.level > 0.001);
+  const active = player.playing || previewing || dragP || stage.recording || wins.notes || [...player.voices.values()].some((v) => v.level > 0.001);
   if (active) lastActive = now;
   if (now - lastActive > 1500 && now - last < 40) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   stage.frame(dt);
+  if (onFrame) onFrame();
+  for (const k of ['notes', 'play']) if (wins[k] && wins[k].ctrl) wins[k].ctrl.frame();
   if (current && player.playing) {
     const tt = player.time();
     if (current.mode === 'song') {
@@ -562,5 +602,186 @@ window.addEventListener('resize', autosize);
 if (document.fonts) document.fonts.ready.then(autosize);
 setTimeout(autosize, 250);
 input.focus();
-window.__wc = { sys, player, stage };
+let onFrame = null;
+
+function karaSegments(tt) {
+  if (!current) return [];
+  let ln;
+  if (current.mode === 'song') ln = current.arr.lines[current.line];
+  const idx = [];
+  current.notes.forEach((n, i) => { if (!ln || n.line === ln.i) idx.push(i); });
+  const text = ln ? current.parsed.lines[ln.i].text : current.parsed.lines[0] ? current.parsed.lines[0].text : '';
+  const segs = [];
+  let pos = 0;
+  const low = text.toLowerCase();
+  for (const i of idx) {
+    const n = current.notes[i];
+    const sx = (n.syl.text || '').trim().toLowerCase();
+    if (!sx) continue;
+    const at = low.indexOf(sx, pos);
+    if (at < 0) continue;
+    if (at > pos) segs.push({ text: text.slice(pos, at), pr: tt >= n.t0 ? 1 : 0 });
+    segs.push({ text: text.slice(at, at + sx.length), pr: Math.max(0, Math.min(1, (tt - n.t0) / Math.max(0.08, n.t1 - n.t0))) });
+    pos = at + sx.length;
+  }
+  if (pos < text.length) segs.push({ text: text.slice(pos), pr: 0 });
+  return segs;
+}
+
+async function recordVideo(fmt, onProg) {
+  await ensureAudio();
+  const W = fmt === '9:16' ? 1080 : 1920, H = fmt === '9:16' ? 1920 : 1080;
+  const sh = Math.round(H * (fmt === '9:16' ? 0.7 : 0.76));
+  const comp = document.createElement('canvas');
+  comp.width = W; comp.height = H;
+  const g = comp.getContext('2d');
+  stage.beginRecord(W, sh);
+  document.body.classList.add('recording');
+  const stream = comp.captureStream(30);
+  sys.stream.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+  const mime = videoMime();
+  const mr = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 9000000, audioBitsPerSecond: 192000 });
+  const chunks = [];
+  mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const fs = fmt === '9:16' ? 62 : 56;
+  onFrame = () => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    g.drawImage(stage.canvas, 0, 0, W, sh);
+    g.font = `500 ${Math.round(fs * 0.42)}px -apple-system, BlinkMacSystemFont, "SF Pro Display", Helvetica, sans-serif`;
+    g.fillStyle = '#8e8e93'; g.textBaseline = 'top';
+    g.fillText('Wire Choir', Math.round(W * 0.05), Math.round(H * 0.025));
+    const tt = player.time();
+    const segs = karaSegments(tt);
+    g.font = `400 ${fs}px -apple-system, BlinkMacSystemFont, "SF Pro Display", Helvetica, sans-serif`;
+    g.textBaseline = 'alphabetic';
+    const maxW = W * 0.88;
+    const words = [];
+    for (const sg of segs) words.push(sg);
+    let lines = [[]], lw = 0;
+    for (const sg of words) { const w = g.measureText(sg.text).width; if (lw + w > maxW && lines[lines.length - 1].length) { lines.push([]); lw = 0; } lines[lines.length - 1].push(sg); lw += w; }
+    const c = current ? current.color || '#7dffb6' : '#7dffb6';
+    let y = sh + (H - sh) * 0.42;
+    for (const ln of lines) {
+      let x = W * 0.06;
+      for (const sg of ln) {
+        const w = g.measureText(sg.text).width;
+        g.fillStyle = '#3a3a3c'; g.fillText(sg.text, x, y);
+        if (sg.pr > 0) { g.save(); g.beginPath(); g.rect(x, y - fs, w * sg.pr, fs * 1.4); g.clip(); g.fillStyle = c; g.fillText(sg.text, x, y); g.restore(); }
+        x += w;
+      }
+      y += fs * 1.25;
+    }
+    if (current) onProg && onProg(Math.max(0, Math.min(1, tt / current.arr.duration)));
+  };
+  mr.start(250);
+  const done = new Promise((res) => { const prev = player.onEnd; player.onEnd = () => { player.onEnd = prev; prev && prev(); res(); }; });
+  await playSong();
+  await done;
+  await new Promise((r) => setTimeout(r, 700));
+  const stopped = new Promise((r) => { mr.onstop = r; });
+  mr.stop();
+  await stopped;
+  onFrame = null;
+  document.body.classList.remove('recording');
+  stage.endRecord();
+  stage.setSize(canvas.clientWidth, canvas.clientHeight);
+  return new Blob(chunks, { type: mime.split(';')[0] });
+}
+
+function saveRecording(parsed, sylls, evs) {
+  const ids = lineIds(parsed);
+  const byLine = new Map();
+  for (const e of evs) {
+    const syl = sylls[e.pos];
+    if (!syl) continue;
+    const li = parsed.lines.findIndex((l) => l.syls.includes(syl));
+    if (li < 0) continue;
+    if (!byLine.has(li)) byLine.set(li, new Map());
+    byLine.get(li).set(syl, e);
+  }
+  const mel = { ...(song.melody && !Array.isArray(song.melody) ? song.melody : {}) };
+  let n = 0;
+  for (const [li, m] of byLine) {
+    const l = parsed.lines[li];
+    if (m.size !== l.syls.length) continue;
+    const evl = l.syls.map((s) => m.get(s));
+    const start = Math.floor(Math.min(...evl.map((e) => e.b)) / 4) * 4;
+    const notes = evl.map((e, i) => ({ i, b: e.b - start, d: e.d, m: snapRec(e.midi) }));
+    const bars = Math.max(1, Math.ceil(Math.max(...notes.map((x) => x.b + x.d)) / 4));
+    mel[ids[li]] = { bars, notes };
+    n++;
+  }
+  if (n) { song.melody = mel; commit({ keepWins: true }); }
+  return n;
+}
+function snapRec(m) {
+  const lead = song.heads.find((h) => h.role === 'lead');
+  let x = m;
+  if (lead) { const c = (lead.lo + lead.hi) / 2 + (lead.shift || 0); while (x - 60 > 7) x -= 12; while (x - 60 < -10) x += 12; void c; }
+  return x;
+}
+
+const app = {
+  get song() { return song; },
+  t, player, sys, stage, ensureAudio, toast, commit,
+  playing: () => player.playing && current && current.mode === 'song',
+  toggleSong, stopAll,
+  mode: () => (MOODS[song.mood] || MOODS.happy).mode,
+  spb: () => 60 / bpm(),
+  blurInput: () => input.blur(),
+  headColor: (id) => (song.heads.find((h) => h.id === id) || song.heads.find((h) => h.role === 'lead') || song.heads[0]).color,
+  songBeat: () => (current && current.mode === 'song' && player.playing ? player.time() / current.arr.spb : null),
+  setLiveParsed: (p) => { liveParsed = p; },
+  async arrangement() {
+    if (!song.lines.length) return null;
+    await prepareLang(song.lang);
+    const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
+    const arr = arrange({ ...song, lineSingers: singersFor(song.lines) }, parsed, song.heads);
+    return { parsed, arr, notes: arr.notes };
+  },
+  async songJob() {
+    const a = await app.arrangement();
+    if (!a) return null;
+    return { heads: song.heads, parts: buildParts(a.arr, song.heads), lang: song.lang, duration: a.arr.duration };
+  },
+  async previewNote(n) {
+    await ensureAudio();
+    const h = song.heads.find((x) => x.role === 'lead') || song.heads[0];
+    let m = n.m;
+    const c = (h.lo + h.hi) / 2 + (h.shift || 0);
+    while (m < c - 9) m += 12;
+    while (m > c + 9) m -= 12;
+    player.liveOn(h, n.syl, m, song.lang, null, -1);
+    clearTimeout(app._pv);
+    app._pv = setTimeout(() => player.liveOff(h, n.syl, song.lang), 380);
+  },
+  async playSyllables() {
+    await prepareLang(song.lang);
+    const text = song.lines.length ? song.lines.map((l) => l.text).join('\n') : input.value.trim() || lastSung || 'la la la la';
+    const parsed = parseLyrics(text, song.lang);
+    return { parsed, syls: parsed.syls };
+  },
+  startBacking() {
+    const back = song.heads.filter((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
+    if (!back.length || !song.lines.length) return null;
+    const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
+    const arr = arrange({ ...song, lineSingers: singersFor(song.lines) }, parsed, song.heads);
+    const parts = buildParts(arr, back);
+    player.play(arr, parts, song.lang, back);
+    return { t0Perf: performance.now() + (player.t0 - sys.ctx.currentTime) * 1000 };
+  },
+  saveRecording, recordVideo,
+  fileName: (ext) => 'wire-choir-' + ((song.lines[0] && song.lines[0].text) || 'piosenka').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '.' + ext,
+};
+
+if (location.hash.startsWith('#s=')) {
+  decodeSong(location.hash.slice(3)).then((s) => {
+    song = s;
+    expanded = song.heads[0] ? song.heads[0].id : null;
+    history.replaceState(null, '', location.pathname);
+    commit();
+    toast(t().loadedLink, 3000);
+  }).catch(() => {});
+}
+window.__wc = { sys, player, stage, app };
 loop();

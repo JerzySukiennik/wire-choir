@@ -3,7 +3,7 @@ import { NPAR, REST_PARAMS } from './voice/engine.js';
 
 let moduleUrl = null;
 
-async function workletSource() {
+export async function workletSource() {
   if (moduleUrl) return moduleUrl;
   const base = new URL('./voice/', import.meta.url);
   const [eng, wk] = await Promise.all([
@@ -15,7 +15,7 @@ async function workletSource() {
   return moduleUrl;
 }
 
-function makeImpulse(ctx, secs, decay) {
+export function makeImpulse(ctx, secs, decay) {
   const len = Math.round(ctx.sampleRate * secs);
   const buf = ctx.createBuffer(2, len, ctx.sampleRate);
   for (let c = 0; c < 2; c++) {
@@ -32,6 +32,33 @@ function makeImpulse(ctx, secs, decay) {
     }
   }
   return buf;
+}
+
+export function buildChain(ctx) {
+  const c = {};
+  c.master = ctx.createGain();
+  c.master.gain.value = 0.9;
+  c.glue = ctx.createDynamicsCompressor();
+  c.glue.threshold.value = -16; c.glue.knee.value = 10; c.glue.ratio.value = 3;
+  c.glue.attack.value = 0.008; c.glue.release.value = 0.25;
+  c.comp = ctx.createDynamicsCompressor();
+  c.comp.threshold.value = -4; c.comp.knee.value = 2; c.comp.ratio.value = 20;
+  c.comp.attack.value = 0.001; c.comp.release.value = 0.12;
+  c.clip = ctx.createWaveShaper();
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) { const x = (i / 1024 - 1) * 1.6; curve[i] = Math.tanh(x) / Math.tanh(1.6) * 0.98; }
+  c.clip.curve = curve;
+  c.clip.oversample = '2x';
+  c.dry = ctx.createGain();
+  c.wetIn = ctx.createGain();
+  c.verb = ctx.createConvolver();
+  c.verb.buffer = makeImpulse(ctx, 1.9, 3.0);
+  c.wet = ctx.createGain();
+  c.wet.gain.value = 0.45;
+  c.dry.connect(c.master);
+  c.wetIn.connect(c.verb).connect(c.wet).connect(c.master);
+  c.master.connect(c.glue).connect(c.comp).connect(c.clip);
+  return c;
 }
 
 export class Voice {
@@ -116,28 +143,7 @@ export class AudioSystem {
       const mobile = typeof navigator !== 'undefined' && /iPhone|iPad|Android/i.test(navigator.userAgent || '');
       this.steps = mobile ? 1 : 2;
       await ctx.audioWorklet.addModule(await workletSource());
-      this.master = ctx.createGain();
-      this.master.gain.value = 0.9;
-      this.glue = ctx.createDynamicsCompressor();
-      this.glue.threshold.value = -16; this.glue.knee.value = 10; this.glue.ratio.value = 3;
-      this.glue.attack.value = 0.008; this.glue.release.value = 0.25;
-      this.comp = ctx.createDynamicsCompressor();
-      this.comp.threshold.value = -4; this.comp.knee.value = 2; this.comp.ratio.value = 20;
-      this.comp.attack.value = 0.001; this.comp.release.value = 0.12;
-      this.clip = ctx.createWaveShaper();
-      const curve = new Float32Array(2049);
-      for (let i = 0; i < curve.length; i++) { const x = (i / 1024 - 1) * 1.6; curve[i] = Math.tanh(x) / Math.tanh(1.6) * 0.98; }
-      this.clip.curve = curve;
-      this.clip.oversample = '2x';
-      this.dry = ctx.createGain();
-      this.wetIn = ctx.createGain();
-      this.verb = ctx.createConvolver();
-      this.verb.buffer = makeImpulse(ctx, 1.9, 3.0);
-      this.wet = ctx.createGain();
-      this.wet.gain.value = 0.45;
-      this.dry.connect(this.master);
-      this.wetIn.connect(this.verb).connect(this.wet).connect(this.master);
-      this.master.connect(this.glue).connect(this.comp).connect(this.clip);
+      Object.assign(this, buildChain(ctx));
       this.clip.connect(ctx.destination);
       if (ctx.createMediaStreamDestination) this.stream = ctx.createMediaStreamDestination();
       if (this.stream) this.clip.connect(this.stream);
