@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wire Choir · Warianty UI</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700;800&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Martian+Mono:wdth,wght@112,300;112,400;112,500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0b0c0e;color:#d8dde3;font-family:Geist,system-ui,sans-serif}
+body{padding:28px 24px 80px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.intro{max-width:1280px;margin:0 auto 26px;display:flex;justify-content:space-between;align-items:end;gap:20px;flex-wrap:wrap}
+.intro h1{font-family:'Geist Mono';font-weight:500;font-size:13px;letter-spacing:.32em;color:#8fd8ff}
+.intro p{font-size:13px;color:#7c8792;max-width:620px;line-height:1.55}
+.jump{display:flex;gap:8px}
+.jump a{font-family:'Geist Mono';font-size:12px;color:#c9d2da;text-decoration:none;border:1px solid #262c33;border-radius:99px;padding:6px 12px}
+.jump a:hover{border-color:#4b5763}
+.variant{max-width:1280px;margin:0 auto 64px}
+.vh{display:flex;align-items:baseline;gap:12px;margin-bottom:12px;font-size:14px;color:#c6ced6}
+.vh b{font-family:'Geist Mono';font-weight:500;color:#0b0c0e;background:#c6ced6;border-radius:6px;padding:1px 8px;font-size:12px}
+.vh span{color:#77818b;font-size:13px}
+.fit{position:relative;width:100%}
+.frame{position:absolute;left:0;top:0;width:1280px;height:760px;transform-origin:0 0;overflow:hidden;border-radius:16px}
+canvas{display:block}
+
+/* A · Sonagraf */
+.A{--g0:#111210;--g1:#181916;--g2:#20211d;--ln:#2e2f2a;--cream:#ece5d1;--dim:#8d8878;--amb:#ffb547;background:var(--g0);color:var(--cream);font-family:'Instrument Sans';display:grid;grid-template-rows:66px 1fr 112px 132px}
+.A .mono{font-family:'Martian Mono';font-stretch:112%}
+.a-top{display:flex;align-items:center;gap:22px;padding:0 22px;border-bottom:1px solid var(--ln);background:linear-gradient(#1b1c19,#141512)}
+.a-logo{font-family:'Martian Mono';font-stretch:112%;font-weight:500;letter-spacing:.28em;font-size:14px;display:flex;flex-direction:column;gap:3px}
+.a-logo small{font-size:8.5px;letter-spacing:.24em;color:var(--dim);font-weight:400}
+.a-modes{display:flex;border:1px solid var(--ln);border-radius:8px;overflow:hidden;margin-left:10px}
+.a-modes button{font-family:'Martian Mono';font-stretch:112%;font-size:10.5px;letter-spacing:.16em;padding:9px 14px;color:var(--dim);display:flex;align-items:center;gap:8px;border-right:1px solid var(--ln)}
+.a-modes button:last-child{border-right:0}
+.a-modes i{width:6px;height:6px;border-radius:50%;background:#3a3830}
+.a-modes .on{color:var(--cream);background:#22231f}
+.a-modes .on i{background:var(--amb);box-shadow:0 0 8px var(--amb)}
+.a-transport{display:flex;align-items:center;gap:14px}
+.a-play{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--cream);font-size:13px;padding-left:3px}
+.a-time{font-family:'Martian Mono';font-size:15px;font-stretch:112%}
+.a-time small{color:var(--dim);font-size:11px;margin-left:6px}
+.a-mods{display:flex;gap:0;margin-left:auto;border:1px solid var(--ln);border-radius:8px}
+.a-mods div{padding:7px 14px;border-right:1px solid var(--ln);display:flex;flex-direction:column;gap:3px;min-width:78px}
+.a-mods div:last-child{border-right:0}
+.a-mods label{font-family:'Martian Mono';font-size:8px;letter-spacing:.2em;color:var(--dim)}
+.a-mods b{font-weight:500;font-size:14px}
+.a-share{font-family:'Martian Mono';font-stretch:112%;font-size:10.5px;letter-spacing:.16em;border:1px solid var(--ln);border-radius:8px;padding:11px 14px}
+.a-stage{display:grid;grid-template-columns:1fr 1fr 88px;gap:10px;padding:12px 14px 10px}
+.a-ch{position:relative;border:1px solid var(--ln);border-radius:10px;overflow:hidden;background:#000}
+.a-ch canvas{width:100%;height:100%}
+.a-lab{position:absolute;left:12px;top:10px;font-family:'Martian Mono';font-stretch:112%;font-size:9px;letter-spacing:.2em;color:var(--cream);opacity:.8}
+.a-meter{position:absolute;right:10px;top:12px;bottom:12px;width:5px;background:#1d1e1a;border-radius:3px;overflow:hidden;display:flex;align-items:flex-end}
+.a-meter i{display:block;width:100%;height:0%;background:linear-gradient(to top,#ffb547,#fff0c8);border-radius:3px}
+.a-add{border:1px dashed #3d3e37;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);font-size:26px;font-weight:300}
+.a-add span{font-family:'Martian Mono';font-size:8.5px;letter-spacing:.18em;writing-mode:vertical-rl;transform:rotate(180deg)}
+.a-spec{position:relative;margin:0 14px;border:1px solid var(--ln);border-radius:10px;overflow:hidden;background:#0c0c0a}
+.a-spec canvas{width:100%;height:100%}
+.a-spec-lab{position:absolute;left:12px;top:8px;font-family:'Martian Mono';font-size:8.5px;letter-spacing:.2em;color:var(--dim)}
+.a-bottom{display:grid;grid-template-columns:1fr 210px;gap:14px;padding:12px 14px 14px}
+.a-lyrics{border:1px solid var(--ln);border-radius:10px;padding:14px 18px;font-size:17px;line-height:1.55;color:#bdb6a2;columns:2;column-gap:40px}
+.a-lyrics div{break-inside:avoid}
+.a-lyrics .now{color:var(--amb)}
+.a-actions{display:flex;flex-direction:column;gap:10px}
+.a-actions button{flex:1;border:1px solid var(--ln);border-radius:10px;font-family:'Martian Mono';font-stretch:112%;font-size:10.5px;letter-spacing:.16em}
+.a-actions .pri{background:var(--cream);color:#151511;border-color:var(--cream)}
+
+/* B · Hymnał */
+.B{--paper:#edf0f2;--ink:#14171b;--rule:#c8ced4;--soft:#69717a;--blue:#2537ff;background:var(--paper);color:var(--ink);font-family:Geist}
+.b-top{height:72px;display:flex;align-items:center;gap:26px;padding:0 30px;border-bottom:1px solid var(--rule)}
+.b-logo{font-family:'Instrument Serif';font-style:italic;font-size:30px;letter-spacing:-.01em}
+.b-modes{display:flex;gap:22px;font-size:15px;color:var(--soft)}
+.b-modes a{padding:6px 0;border-bottom:1.5px solid transparent;cursor:pointer}
+.b-modes .on{color:var(--ink);border-color:var(--blue)}
+.b-meta{margin-left:auto;font-size:14px;color:var(--soft)}
+.b-play{background:var(--blue);color:#fff;border-radius:99px;padding:11px 20px;font-weight:500;font-size:14px}
+.b-ghost{border:1px solid var(--rule);border-radius:99px;padding:10px 18px;font-size:14px}
+.b-main{display:grid;grid-template-columns:1fr 390px;height:688px}
+.b-page{padding:30px 40px 24px;display:flex;flex-direction:column;overflow:hidden}
+.b-title h1{font-family:'Instrument Serif';font-weight:400;font-size:46px;line-height:1;letter-spacing:-.01em}
+.b-title p{font-size:13px;color:var(--soft);margin-top:8px}
+#bScore{flex:1;margin-top:14px}
+#bScore svg{width:100%;height:100%}
+.b-foot{display:flex;gap:10px}
+.b-foot button{border:1px solid var(--rule);border-radius:99px;padding:9px 16px;font-size:13px}
+.b-side{border-left:1px solid var(--rule);padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.b-side figure{flex:1;display:flex;flex-direction:column;gap:8px;min-height:0}
+.b-side canvas{flex:1;min-height:0;width:100%;border-radius:18px;background:#000}
+.b-side figcaption{font-size:13px;color:var(--soft)}
+.b-side figcaption i{font-family:'Instrument Serif';font-size:19px;color:var(--ink);margin-right:6px}
+.b-add{border:1px dashed #aab3bb;border-radius:14px;padding:12px;font-size:14px;color:var(--soft)}
+.n-hi{fill:var(--blue)!important}
+.t-hi{fill:var(--blue)!important}
+
+/* C · Rentgen */
+.C{--film:#09111d;--chrome:#0d1015;--ln:#1c2836;--ink:#cfe2ff;--dim:#6f8299;--mark:#ff8a2a;background:var(--chrome);color:var(--ink);font-family:'IBM Plex Sans Condensed';display:grid;grid-template-rows:38px 1fr 64px}
+.C .mono,.c-top{font-family:'IBM Plex Mono'}
+.c-top{display:flex;align-items:center;padding:0 18px;font-size:11px;letter-spacing:.12em;color:var(--dim);border-bottom:1px solid var(--ln)}
+.c-rec{margin-left:auto;color:var(--mark)}
+.c-body{display:grid;grid-template-columns:72px 1fr 250px;min-height:0}
+.c-rail{border-right:1px solid var(--ln);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+.c-rail button{width:56px;padding:10px 0;font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.1em;color:var(--dim);border-radius:6px}
+.c-rail .on{color:var(--ink);background:#15202d;box-shadow:inset 2px 0 0 var(--mark)}
+.c-rail hr{width:36px;border:0;border-top:1px solid var(--ln);margin:8px 0}
+.c-rail .c-play{font-size:16px;color:var(--ink);border:1px solid #2a3a4c}
+.c-films{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px;min-height:0}
+.c-film{position:relative;background:var(--film);border:1px solid #1d2a3a;border-radius:4px;overflow:hidden}
+.c-film canvas{width:100%;height:100%}
+.c-edge{position:absolute;font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:.14em;color:#7c95b4}
+.c-edge.t{left:12px;top:9px}
+.c-edge.s{right:-38px;top:50%;transform:rotate(90deg);transform-origin:center}
+.c-edge.b{left:12px;bottom:9px;color:#4b6080}
+.c-insp{border-left:1px solid var(--ln);padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.c-insp h4{font-family:'IBM Plex Mono';font-weight:500;font-size:11px;letter-spacing:.14em;color:var(--mark)}
+.c-row{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:14px}
+.c-row span{color:var(--dim)}
+.c-row b{font-family:'IBM Plex Mono';font-weight:400;font-size:12px}
+.c-row i{grid-column:1/-1;height:2px;background:#1b2635;position:relative}
+.c-row i::after{content:'';position:absolute;left:0;top:0;bottom:0;width:var(--v);background:#5f86b4}
+.c-add{margin-top:auto;border:1px dashed #2a3a4c;border-radius:6px;padding:12px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:.12em;color:var(--dim)}
+.c-lyr{border-top:1px solid var(--ln);display:flex;align-items:center;gap:6px;padding:0 20px;font-size:21px;white-space:nowrap;overflow:hidden;color:#6f8299}
+.c-lyr .s{padding:2px 4px;border-radius:3px}
+.c-lyr .hi{color:#0d1015;background:var(--mark)}
+.c-lyr .done{color:var(--ink)}
+
+/* D · Scena */
+.D{background:#000;color:#fff;font-family:Geist}
+.d-cv{position:absolute;inset:0;width:100%;height:100%}
+.D::after{content:'';position:absolute;left:0;right:0;bottom:0;height:52%;background:linear-gradient(to bottom,transparent,rgba(0,0,0,.82) 62%);pointer-events:none}
+.d-kara,.d-dock{z-index:2}
+.d-top{position:absolute;left:50%;top:20px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:7px 8px 7px 20px;border-radius:99px;background:rgba(18,22,28,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08)}
+.d-logo{font-family:'Big Shoulders Display';font-weight:800;letter-spacing:.14em;font-size:17px}
+.d-seg{display:flex;background:rgba(255,255,255,.06);border-radius:99px;padding:3px}
+.d-seg button{padding:7px 14px;border-radius:99px;font-size:13px;color:#aab4be}
+.d-seg .on{background:#fff;color:#000}
+.d-play{width:38px;height:38px;border-radius:50%;background:#fff;color:#000;font-size:12px;padding-left:2px}
+.d-names span{position:absolute;top:84px;transform:translateX(-50%);font-family:'Geist Mono';font-size:10.5px;letter-spacing:.24em;color:rgba(255,255,255,.55)}
+.d-kara{position:absolute;left:0;right:0;bottom:92px;text-align:center}
+.d-prev,.d-next{font-family:'Big Shoulders Display';font-weight:700;font-size:26px;letter-spacing:.04em;color:rgba(255,255,255,.22);text-transform:uppercase;height:34px}
+.d-line{font-family:'Big Shoulders Display';font-weight:800;font-size:84px;line-height:1;letter-spacing:.01em;text-transform:uppercase;margin:6px 0}
+.d-line span{color:rgba(255,255,255,.18);background-clip:text;-webkit-background-clip:text}
+.d-dock{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;gap:6px;padding:6px;border-radius:18px;background:rgba(18,22,28,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08)}
+.d-dock button{padding:9px 15px;border-radius:12px;font-size:13px;color:#d6dde4;background:rgba(255,255,255,.05)}
+.d-dock .d-plus{background:#fff;color:#000;font-weight:600;width:40px;padding:9px 0}
+@media (prefers-reduced-motion:reduce){.d-line span{transition:none}}
+</style>
+</head>
+<body>
+<div class="intro">
+  <div><h1>WIRE CHOIR · 4 KIERUNKI WYGLĄDU</h1></div>
+  <p>Wszędzie te same głowy na żywo, śpiewają bez dźwięku melodię, którą kompozytor ułożył z tekstu. Różni się wszystko wokół: układ, typografia, sterowanie i jeden element-sygnatura.</p>
+  <nav class="jump"><a href="lab.html">← Laboratorium</a><a href="#vA">A</a><a href="#vB">B</a><a href="#vC">C</a><a href="#vD">D</a></nav>
+</div>
+
+<section class="variant" id="vA">
+  <div class="vh"><b>A</b>Sonagraf<span>laboratoryjny analizator głosu: grafit, kremowe opisy, żywy spektrogram formantów</span></div>
+  <div class="fit"><div class="frame A">
+    <div class="a-top">
+      <div class="a-logo">WIRE CHOIR<small>ANALIZATOR ŚPIEWU</small></div>
+      <div class="a-modes"><button class="on"><i></i>AUTO</button><button><i></i>NUTY</button><button><i></i>GRAJ</button></div>
+      <div class="a-transport"><button class="a-play">▶</button><div class="a-time"><span data-time>00:00.0</span><small data-dur></small></div></div>
+      <div class="a-mods"><div><label>NASTRÓJ</label><b>Radosny</b></div><div><label>TONACJA</label><b>C-dur</b></div><div><label>TEMPO</label><b>104</b></div><div><label>JĘZYK</label><b>PL</b></div></div>
+      <button class="a-share">UDOSTĘPNIJ</button>
+    </div>
+    <div class="a-stage">
+      <div class="a-ch"><canvas data-p="0"></canvas><div class="a-lab">KANAŁ 1 · PROWADZI · TENOR</div><div class="a-meter"><i data-meter="0"></i></div></div>
+      <div class="a-ch"><canvas data-p="1"></canvas><div class="a-lab">KANAŁ 2 · HARMONIA · ALT</div><div class="a-meter"><i data-meter="1"></i></div></div>
+      <button class="a-add">+<span>DODAJ GŁOWĘ</span></button>
+    </div>
+    <div class="a-spec"><canvas id="aSpec"></canvas><div class="a-spec-lab">SONAGRAM · KANAŁ 1 · 0–5 kHz</div></div>
+    <div class="a-bottom">
+      <div class="a-lyrics" id="aLyr"></div>
+      <div class="a-actions"><button class="pri">NOWA MELODIA</button><button>EDYTUJ TEKST</button></div>
+    </div>
+  </div></div>
+</section>
+
+<section class="variant" id="vB">
+  <div class="vh"><b>B</b>Hymnał<span>jasny śpiewnik: tekst złożony pod nutami, głowy w czarnych oknach</span></div>
+  <div class="fit"><div class="frame B">
+    <div class="b-top">
+      <div class="b-logo">Wire Choir</div>
+      <nav class="b-modes"><a class="on">Auto</a><a>Nuty</a><a>Graj</a></nav>
+      <div class="b-meta">Radosny · C-dur · ♩ = 104 · PL</div>
+      <button class="b-play">▶ Odtwórz</button><button class="b-ghost">Udostępnij</button>
+    </div>
+    <div class="b-main">
+      <div class="b-page">
+        <div class="b-title"><h1>Mam w głowie drut</h1><p>Na dwa głosy · melodia ułożona z tekstu</p></div>
+        <div id="bScore"></div>
+        <div class="b-foot"><button>Edytuj tekst</button><button>Nowa melodia</button></div>
+      </div>
+      <div class="b-side">
+        <figure><canvas data-p="0"></canvas><figcaption><i>Prowadzi</i>tenor</figcaption></figure>
+        <figure><canvas data-p="1"></canvas><figcaption><i>Harmonia</i>alt, tercja wyżej</figcaption></figure>
+        <button class="b-add">+ Dodaj głos</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="variant" id="vC">
+  <div class="vh"><b>C</b>Rentgen<span>przeglądarka zdjęć RTG: głowy jak klisze, żywe adnotacje na anatomii</span></div>
+  <div class="fit"><div class="frame C">
+    <div class="c-top">WIRE CHOIR · SESJA 08.11.2026 · C-DUR · 104 BPM · RADOSNY · PL<span class="c-rec">● GRA <span data-time>00:00.0</span></span></div>
+    <div class="c-body">
+      <aside class="c-rail"><button class="on">AUTO</button><button>NUTY</button><button>GRAJ</button><hr><button class="c-play">▶</button><button>LOS</button><button>LINK</button></aside>
+      <div class="c-films">
+        <div class="c-film"><canvas data-p="0" data-callouts="0"></canvas><div class="c-edge t">PROWADZI · TENOR · GARDŁO 16.6 CM</div><div class="c-edge b">WC-01 · KANAŁ 1</div></div>
+        <div class="c-film"><canvas data-p="1" data-callouts="1"></canvas><div class="c-edge t">HARMONIA · ALT · GARDŁO 14.9 CM</div><div class="c-edge b">WC-02 · KANAŁ 2</div></div>
+      </div>
+      <aside class="c-insp">
+        <h4>PROWADZI · TENOR</h4>
+        <div class="c-row"><span>Rejestr</span><b>C3–A4</b><i style="--v:55%"></i></div>
+        <div class="c-row"><span>Gardło</span><b>16.6 cm</b><i style="--v:62%"></i></div>
+        <div class="c-row"><span>Oddech</span><b>14%</b><i style="--v:14%"></i></div>
+        <div class="c-row"><span>Miękkość</span><b>0.95</b><i style="--v:40%"></i></div>
+        <div class="c-row"><span>Wibrato</span><b>34 c</b><i style="--v:38%"></i></div>
+        <div class="c-row"><span>Chrypka</span><b>8%</b><i style="--v:8%"></i></div>
+        <button class="c-add">+ DODAJ GŁOWĘ</button>
+      </aside>
+    </div>
+    <div class="c-lyr" id="cLyr"></div>
+  </div></div>
+</section>
+
+<section class="variant" id="vD">
+  <div class="vh"><b>D</b>Scena<span>scena na cały ekran, pływające sterowanie, karaoke w kolorach głów</span></div>
+  <div class="fit"><div class="frame D">
+    <canvas class="d-cv" data-p="both"></canvas>
+    <div class="d-top"><div class="d-logo">WIRE CHOIR</div><div class="d-seg"><button class="on">Auto</button><button>Nuty</button><button>Graj</button></div><button class="d-play">▶</button></div>
+    <div class="d-names"><span style="left:27%">PROWADZI · TENOR</span><span style="left:73%">HARMONIA · ALT</span></div>
+    <div class="d-kara"><div class="d-prev" id="dPrev"></div><div class="d-line" id="dLine"></div><div class="d-next" id="dNext"></div></div>
+    <div class="d-dock"><button>Radosny</button><button>C-dur</button><button>104 BPM</button><button>PL</button><button class="d-plus">+</button><button>Udostępnij</button></div>
+  </div></div>
+</section>
+<script type="module" src="js/warianty.js"></script>
+</body>
+</html>

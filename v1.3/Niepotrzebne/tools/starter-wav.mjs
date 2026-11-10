@@ -1,0 +1,31 @@
+// Headless: applies a starter set (or keeps a saved song) and exports its WAV through the app, for listening checks.
+import { createRequire } from 'node:module';
+import { writeFileSync } from 'node:fs';
+const require = createRequire('/Users/jurek/Downloads/Claude/Projects/CivicForge/node_modules/');
+const { chromium } = require('playwright-core');
+const [id = 'scat', out = 'Niepotrzebne/out/starter.wav', lang = 'pl'] = process.argv.slice(2);
+const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+const page = await browser.newPage({ viewport: { width: 900, height: 600 }, locale: lang === 'pl' ? 'pl-PL' : 'en-US' });
+const errs = [];
+page.on('pageerror', (e) => errs.push('pageerror ' + e.message));
+await page.addInitScript(() => { localStorage.clear(); });
+await page.goto(`http://localhost:${process.env.PORT || 8820}/`);
+await page.waitForTimeout(1200);
+await page.click('#input');
+const t0 = Date.now();
+const res = await page.evaluate(async (id) => {
+  const { STARTERS } = await import('/js/presets.js');
+  const { renderWav } = await import('/js/share.js');
+  const w = window.__wc;
+  await w.app.ensureAudio();
+  await w.app.applyStarter(STARTERS.find((s) => s.id === id));
+  w.app.stopAll();
+  const job = await w.app.songJob();
+  const blob = await renderWav(job);
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let s = ''; for (let i = 0; i < buf.length; i += 8192) s += String.fromCharCode(...buf.subarray(i, i + 8192));
+  return { b64: btoa(s), dur: job.duration, speed: w.pool.speed };
+}, id);
+writeFileSync(out, Buffer.from(res.b64, 'base64'));
+console.log(JSON.stringify({ id, out, dur: +res.dur.toFixed(1), speed: +res.speed.toFixed(2), ms: Date.now() - t0, errs }));
+await browser.close();
