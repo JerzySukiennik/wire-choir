@@ -131,11 +131,25 @@ function splitOrtho(word, n) {
   return out;
 }
 
+const SCAT = {
+  ba: 'B AA1', bah: 'B AA1', da: 'D AA1', dah: 'D AA1', dat: 'D AE1 T', bap: 'B AE1 P', bop: 'B AA1 P', bee: 'B IY1', bi: 'B IY1', dee: 'D IY1', di: 'D IY1',
+  dibi: 'D IH1 B IY0', dibby: 'D IH1 B IY0', diddy: 'D IH1 D IY0', diddly: 'D IH1 D L IY0', dibidi: 'D IH1 B IY0 D IY0', bidi: 'B IH1 D IY0', digi: 'D IH1 G IY0', diga: 'D IH1 G AH0',
+  doo: 'D UW1', du: 'D UW1', doot: 'D UW1 T', dn: 'D AH1 N', dow: 'D AW1', dwee: 'D W IY1', ski: 'S K IY1', skee: 'S K IY1', scoo: 'S K UW1', skoo: 'S K UW1', skat: 'S K AE1 T',
+  wah: 'W AA1', waah: 'W AA1', wa: 'W AA1', wop: 'W AA1 P', ya: 'Y AA1', yah: 'Y AA1', yeah: 'Y EH1', hey: 'HH EY1', ho: 'HH OW1', sha: 'SH AA1', shoo: 'SH UW1', shoop: 'SH UW1 P',
+  la: 'L AA1', na: 'N AA1', ooh: 'UW1', oo: 'UW1', aah: 'AA1', ah: 'AA1', oh: 'OW1', zwee: 'Z W IY1', boom: 'B UW1 M', bam: 'B AE1 M', bom: 'B AA1 M', dum: 'D AH1 M', doom: 'D UW1 M',
+  ka: 'K AA1', ta: 'T AA1', ti: 'T IY1', pa: 'P AA1', pam: 'P AE1 M', ra: 'R AA1', ram: 'R AE1 M', pum: 'P AH1 M', fa: 'F AA1', lu: 'L UW1', li: 'L IY1', lo: 'L OW1', yo: 'Y OW1',
+  ha: 'HH AA1', hoo: 'HH UW1', hee: 'HH IY1', woo: 'W UW1', wee: 'W IY1', zah: 'Z AA1', cha: 'CH AA1', choo: 'CH UW1', shabadoo: 'SH AA1 B AA0 D UW1', scooby: 'S K UW1 B IY0',
+  doobie: 'D UW1 B IY0', daba: 'D AA1 B AA0', bada: 'B AA1 D AA0', badap: 'B AA0 D AE1 P', dabadee: 'D AA1 B AA0 D IY1', zoop: 'Z UW1 P', bwee: 'B W IY1', dop: 'D AA1 P', dip: 'D IH1 P',
+};
+
 export function enWord(word) {
   const lw = word.toLowerCase().replace(/[’`]/g, "'");
   let ph, stress = null;
   const code = DICT && (DICT.m.get(lw) || DICT.m.get(lw.replace(/'/g, '')));
-  if (code) {
+  if (SCAT[lw]) {
+    const r = fromArpa(SCAT[lw].split(' '));
+    ph = r.ph; stress = r.stress;
+  } else if (code) {
     const r = fromArpa([...code].map((c) => DICT.dec[c]));
     ph = r.ph; stress = r.stress;
   } else if (DICT && lw.endsWith("'s") && DICT.m.get(lw.slice(0, -2))) {
@@ -152,7 +166,7 @@ export function enWord(word) {
 }
 
 export function enHasVowel(word) {
-  return /[aeiouy]/i.test(word);
+  return /[aeiouy]/i.test(word) || !!SCAT[word.toLowerCase()];
 }
 
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];

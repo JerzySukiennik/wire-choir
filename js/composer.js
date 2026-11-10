@@ -11,6 +11,35 @@ export const MOODS = {
 };
 const NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
+export const BEAT_ROLE = { B: 'kick', m: 'bass', Pf: 'snare', K: 'snare', '^K': 'snare', t: 'hat', tss: 'hat', kch: 'hat', '!': 'perc', 'P!': 'perc' };
+export function parseBeat(text) {
+  const steps = [];
+  for (const tok of String(text || '').replace(/\|/g, ' ').split(/\s+/)) {
+    if (!tok) continue;
+    if (tok === '.' || tok === '-') { steps.push(null); continue; }
+    let id = tok, accent = false, note;
+    if (id.endsWith('>')) { accent = true; id = id.slice(0, -1); }
+    const m = /^(.+?):(\d+)$/.exec(id);
+    if (m) { id = m[1]; note = +m[2]; }
+    steps.push(BEAT_ROLE[id] ? { id, note, accent } : null);
+  }
+  return steps;
+}
+
+export const BASS_PATS = {
+  pop: { p: [[0, 1.4, 0], [1.5, 0.45, 0], [2, 0.9, 2], [3, 0.9, 0]], syl: { on: ['d'], nu: ['U'], co: ['m'] } },
+  ballad: { p: [[0, 1.9, 0], [2, 1.9, 2]], syl: { on: ['d'], nu: ['u'], co: ['m'] } },
+  sad: { p: [[0, 2.9, 0], [3, 0.9, 2]], syl: { on: ['d'], nu: ['u'], co: ['m'] } },
+  pulse: { p: [[0, 0.4, 0], [0.5, 0.4, 0], [1, 0.4, 0], [1.5, 0.4, 0], [2, 0.4, 0], [2.5, 0.4, 0], [3, 0.4, 0], [3.5, 0.4, 2]], syl: { on: ['d'], nu: ['@'], co: [] } },
+  hymn: { p: [[0, 1.95, 0], [2, 1.95, 1]], syl: { on: [], nu: ['o'], co: [] } },
+  walk: { p: [[0, 0.9, 0], [1, 0.9, 1], [2, 0.9, 2], [3, 0.9, 1]], syl: { on: ['d'], nu: ['u'], co: ['m'] } },
+  doowop: { p: [[0, 0.9, 0], [1.5, 0.4, 0], [2, 0.9, 2], [3, 0.45, 2], [3.5, 0.45, 1]], syl: { on: ['b'], nu: ['o'], co: ['m'] } },
+  octave: { p: [[0, 0.45, 0], [0.5, 0.45, 3], [1, 0.45, 0], [1.5, 0.45, 3], [2, 0.45, 0], [2.5, 0.45, 3], [3, 0.45, 0], [3.5, 0.45, 3]], syl: { on: ['d'], nu: ['@'], co: [] } },
+  reggae: { p: [[0.5, 0.4, 0], [1.5, 0.4, 0], [2, 0.9, 2], [3.5, 0.4, 0]], syl: { on: ['d'], nu: ['u'], co: ['m'] } },
+  funk: { p: [[0, 0.4, 0], [0.75, 0.2, 0], [1.5, 0.4, 3], [2.25, 0.2, 0], [2.5, 0.4, 2], [3.5, 0.4, 0]], syl: { on: ['d'], nu: ['@'], co: ['n'] } },
+  drone: { p: [[0, 3.9, 0]], syl: { on: [], nu: ['M'], co: [] } },
+};
+
 export function rng(seed) {
   let a = seed >>> 0;
   return () => {
@@ -169,12 +198,14 @@ export function arrange(song, parsed, heads, opts = {}) {
   const cap = mood.feel === 8 ? 12 : 9;
   const lines = [];
   let bar = introBars;
+  const spokenSet = song.lineSpoken || {};
   parsed.lines.forEach((l, li) => {
     const S = l.syls.length;
     const ex = mel[ids[li]];
-    const explicit = !!(ex && ex.notes && ex.notes.length === S);
-    const bars = explicit ? Math.max(1, ex.bars || 1) : S <= (mood.feel === 8 ? 5 : 3) ? 1 : 2 * Math.ceil(S / cap);
-    lines.push({ i: li, id: ids[li], b0: bar * 4, b1: (bar + bars) * 4, key: l.key, bars, explicit });
+    const spoken = !!spokenSet[li];
+    const explicit = !spoken && !!(ex && ex.notes && ex.notes.length === S);
+    const bars = spoken ? Math.max(1, Math.ceil((0.5 + S * 0.21) / (4 * spb))) : explicit ? Math.max(1, ex.bars || 1) : S <= (mood.feel === 8 ? 5 : 3) ? 1 : 2 * Math.ceil(S / cap);
+    lines.push({ i: li, id: ids[li], b0: bar * 4, b1: (bar + bars) * 4, key: l.key, bars, explicit, spoken });
     bar += bars;
   });
   const lastLine = lines.length ? lines[lines.length - 1] : null;
@@ -195,6 +226,11 @@ export function arrange(song, parsed, heads, opts = {}) {
     const l = parsed.lines[ln.i];
     const S = l.syls.length;
     const first = (i) => i === 0 || l.syls[i - 1].word !== l.syls[i].word;
+    if (ln.spoken) {
+      const step = 0.2 / spb;
+      for (let i = 0; i < S; i++) notes.push({ s: l.syls[i].id, line: ln.i, syl: l.syls[i], b: ln.b0 + i * step, d: step, m: 60, step: 0, stress: l.syls[i].stress, w: l.syls[i].word, first: first(i), li: i, edited: false, spoken: true });
+      return;
+    }
     if (ln.explicit) {
       for (const n of mel[ln.id].notes) {
         const syl = l.syls[n.i];
@@ -224,7 +260,7 @@ export function arrange(song, parsed, heads, opts = {}) {
     return [leads[idx % leads.length].id];
   };
   lines.forEach((l, idx) => { l.singers = singersOf(l.i, idx); });
-  return { bpm, spb, key, mode, mood: song.mood, introBars, totalBeats: songBars * 4, duration: songBars * 4 * spb + 1.5, chords, notes, lines, lang: parsed.lang, explicit: lines.some((l) => l.explicit), track: tr };
+  return { bpm, spb, key, mode, mood: song.mood, introBars, totalBeats: songBars * 4, duration: songBars * 4 * spb + 1.5, chords, notes, lines, lang: parsed.lang, explicit: lines.some((l) => l.explicit), track: tr, beat: song.beat && song.beat.text ? song.beat : null, bassPat: BASS_PATS[song.bassPat] ? song.bassPat : null, question: parsed.lines.map((l) => /\?\s*$/.test(l.text)) };
 }
 
 export function snapToScale(m, key, mode) {
@@ -253,11 +289,17 @@ export function buildParts(arr, heads) {
   const spb = arr.spb;
   const parts = {};
   const chordAt = (b) => arr.chords[Math.max(0, Math.min(arr.chords.length - 1, Math.floor(b / 4)))];
-  for (const h of heads) parts[h.id] = { notes: [], drums: [], role: h.role };
+  for (const h of heads) parts[h.id] = { notes: [], drums: [], speech: [], marks: [], role: h.role };
   for (const h of heads.filter((x) => x.role === 'lead')) {
     for (const l of arr.lines) {
       if (!l.singers.includes(h.id)) continue;
       const ns = arr.notes.filter((n) => n.line === l.i);
+      if (l.spoken) {
+        if (!ns.length) continue;
+        parts[h.id].speech.push({ t: l.b0 * spb, syls: ns.map((n) => n.syl), question: !!(arr.question && arr.question[l.i]), dur: (l.b1 - l.b0) * spb });
+        for (const n of ns) if (n.first) parts[h.id].marks.push({ t: n.b * spb, w: n.w });
+        continue;
+      }
       const sh = fitOctave(ns.map((n) => n.m), h.lo, h.hi, h.shift);
       for (const n of ns) parts[h.id].notes.push({ t: n.b * spb, d: n.d * spb, f0: midiToHz(n.m + sh), m: n.m + sh, amp: 0.82 + 0.06 * Math.min(1, n.stress), syl: n.syl, w: n.first ? n.w : -1, s: n.s });
     }
@@ -265,6 +307,7 @@ export function buildParts(arr, heads) {
   for (const h of heads.filter((x) => x.role === 'harmony')) {
     const iv = HARM[h.harm || 'up3'] ?? 2;
     for (const l of arr.lines) {
+      if (l.spoken) continue;
       const ns = arr.notes.filter((n) => n.line === l.i);
       const hm = ns.map((n) => {
         let st = n.step + iv;
@@ -304,13 +347,8 @@ export function buildParts(arr, heads) {
   for (const h of heads.filter((x) => x.role === 'bass')) {
     const center = (h.lo + h.hi) / 2 + (h.shift || 0) - 4;
     const near = (pc) => { let best = 0, bd = 99; for (let m = 24; m < 84; m++) if (m % 12 === pc && Math.abs(m - center) < bd) { bd = Math.abs(m - center); best = m; } return best; };
-    const pat = {
-      pop: [[0, 1.4, 0], [1.5, 0.45, 0], [2, 0.9, 2], [3, 0.9, 0]],
-      ballad: [[0, 1.9, 0], [2, 1.9, 2]], sad: [[0, 2.9, 0], [3, 0.9, 2]],
-      pulse: [[0, 0.4, 0], [0.5, 0.4, 0], [1, 0.4, 0], [1.5, 0.4, 0], [2, 0.4, 0], [2.5, 0.4, 0], [3, 0.4, 0], [3.5, 0.4, 2]],
-      hymn: [[0, 1.95, 0], [2, 1.95, 1]],
-    }[mood.bass];
-    const syl = mood.bass === 'hymn' ? { on: [], nu: ['o'], co: [] } : mood.bass === 'pulse' ? { on: ['d'], nu: ['@'], co: [] } : mood.bass === 'pop' ? { on: ['d'], nu: ['U'], co: ['m'] } : { on: ['d'], nu: ['u'], co: ['m'] };
+    const bp = BASS_PATS[arr.bassPat] || BASS_PATS[mood.bass];
+    const pat = bp.p, syl = bp.syl;
     const lastBar = arr.chords.length - 1;
     const tb = arr.track && Array.isArray(arr.track.bass) && arr.track.bass.length ? arr.track.bass : null;
     const autoFrom = tb ? arr.track.bars : 0;
@@ -327,7 +365,7 @@ export function buildParts(arr, heads) {
       if (bi < autoFrom) return;
       const p = bi === lastBar ? [[0, 3.5, 0]] : pat;
       for (const [b, d, ti] of p) {
-        const m = near(ch.pcs[ti]);
+        const m = ti === 3 ? near(ch.pcs[0]) + 12 : near(ch.pcs[ti]);
         parts[h.id].notes.push({ t: (ch.b + b) * spb, d: d * spb, f0: midiToHz(m), m, amp: 0.78, syl, w: -1 });
       }
     });
@@ -341,9 +379,10 @@ export function buildParts(arr, heads) {
     organ: [{ on: [], nu: ['o'], co: [] }, { on: [], nu: ['o'], co: [] }],
     flute: [{ on: ['t'], nu: ['u'], co: [] }, { on: ['t'], nu: ['u'], co: [] }],
   };
-  const leadNotes = arr.notes;
+  const PATTERN_OF = { bird: 'flute', seal: 'synth', gator: 'organ', elephant: 'brass' };
+  const leadNotes = arr.notes.filter((n) => !n.spoken);
   for (const h of heads.filter((x) => x.role === 'inst')) {
-    const type = SYL[h.inst] ? h.inst : 'synth';
+    const type = PATTERN_OF[h.inst] || (SYL[h.inst] ? h.inst : 'synth');
     const [shortS, longS] = SYL[type];
     const center = (h.lo + h.hi) / 2 + (h.shift || 0);
     const near = (pc, c = center) => { let best = 60, bd = 99; for (let m = 24; m < 100; m++) if (((m % 12) + 12) % 12 === pc && Math.abs(m - c) < bd) { bd = Math.abs(m - c); best = m; } return best; };
@@ -394,11 +433,25 @@ export function buildParts(arr, heads) {
     }[mood.drums];
     const amps = { K: 1, S: mood.drums === 'ballad' ? 0.7 : 0.9, H: 0.55, O: 0.6 };
     const lastBar = arr.chords.length - 1;
+    const kit = heads.filter((x) => x.role === 'beatbox');
+    const idx = kit.indexOf(h);
+    const steps = arr.beat ? parseBeat(arr.beat.text) : null;
+    if (steps && steps.some(Boolean)) {
+      const mineRoles = kit.length === 1 ? ['kick', 'bass', 'snare', 'hat', 'perc'] : kit.length === 2 ? (idx === 0 ? ['kick', 'bass', 'perc'] : ['snare', 'hat']) : idx === 0 ? ['kick', 'bass'] : idx === 1 ? ['snare', 'perc'] : ['hat'];
+      const swing = Math.max(0, Math.min(0.6, +arr.beat.swing || 0));
+      const total = arr.chords.length * 16;
+      for (let s = 0; s < total - 16; s++) {
+        const st = steps[s % steps.length];
+        if (!st || !mineRoles.includes(BEAT_ROLE[st.id])) continue;
+        if (dens === 'calm' && BEAT_ROLE[st.id] === 'hat') continue;
+        parts[h.id].drums.push({ type: st.id, t: (s / 4 + (s % 2 ? swing * 0.125 : 0)) * spb, amp: st.accent ? 1 : 0.8, note: st.note });
+      }
+      if (idx === 0) parts[h.id].drums.push({ type: 'B', t: (total - 16) / 4 * spb, amp: 1 });
+      continue;
+    }
     const td = arr.track && Array.isArray(arr.track.drums) && arr.track.drums.length ? arr.track.drums : null;
     const autoFrom = td ? arr.track.bars : 0;
     if (td) {
-      const kit = heads.filter((x) => x.role === 'beatbox');
-      const idx = kit.indexOf(h);
       const mine = kit.length === 1 ? 'KSHO' : idx === 0 ? 'K' : kit.length === 2 || idx === 1 ? (kit.length === 2 ? 'SHO' : 'S') : 'HO';
       const PRI = { S: 4, K: 3, O: 2, H: 1 };
       const at = new Map();

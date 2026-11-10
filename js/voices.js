@@ -29,6 +29,10 @@ export const INSTS = {
   strings: { pl: 'Smyczki', en: 'Strings', lo: 57, hi: 81, tract: 14.4, rd: 1.15, breath: 0.28, vib: 38, vibRate: 5.4, rough: 0.03 },
   organ: { pl: 'Organy', en: 'Organ', lo: 48, hi: 72, tract: 16, rd: 0.95, breath: 0.04, vib: 55, vibRate: 6.8, rough: 0.02 },
   flute: { pl: 'Flet', en: 'Flute', lo: 69, hi: 88, tract: 12.4, rd: 1.45, breath: 0.7, vib: 24, vibRate: 5.2, rough: 0 },
+  bird: { pl: 'Ptak', en: 'Songbird', lo: 60, hi: 84, tract: 12, rd: 1, breath: 0.1, vib: 0, vibRate: 5.6, rough: 0, creature: true },
+  seal: { pl: 'Foka', en: 'Seal', lo: 55, hi: 79, tract: 15, rd: 1, breath: 0.1, vib: 0, vibRate: 5.6, rough: 0, creature: true },
+  gator: { pl: 'Aligator', en: 'Alligator', lo: 48, hi: 67, tract: 19, rd: 1, breath: 0.1, vib: 0, vibRate: 5.6, rough: 0, creature: true },
+  elephant: { pl: 'Słoń', en: 'Elephant', lo: 55, hi: 76, tract: 20, rd: 1, breath: 0.1, vib: 0, vibRate: 5.6, rough: 0, creature: true },
 };
 
 export function applyInst(h, type) {

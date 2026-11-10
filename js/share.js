@@ -1,8 +1,8 @@
 // Wire Choir sharing and rendering: song links (deflate + base64url), offline WAV render, video capture of the stage.
-import { workletSource, buildChain } from './audio.js';
+import { buildChain } from './audio.js';
 import { engineCfg } from './voices.js';
-import { voiceMix } from './player.js';
-import { planNotes, planDrums } from './voice/planner.js';
+import { voiceMix, pool } from './player.js';
+import { buildUnits } from './chimera/units.js';
 
 function b64url(bytes) {
   let s = '';
@@ -17,7 +17,7 @@ function unb64url(str) {
 }
 
 export async function encodeSong(song) {
-  const data = { v: 1, lang: song.lang, mood: song.mood, key: song.key, bpm: song.bpm, seed: song.seed, lines: song.lines, heads: song.heads, melody: song.melody || {}, track: song.track || undefined };
+  const data = { v: 1, lang: song.lang, mood: song.mood, key: song.key, bpm: song.bpm, seed: song.seed, lines: song.lines, heads: song.heads, melody: song.melody || {}, track: song.track || undefined, beat: song.beat || undefined, bassPat: song.bassPat || undefined };
   const bytes = new TextEncoder().encode(JSON.stringify(data));
   if (typeof CompressionStream !== 'undefined') {
     const cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
@@ -35,7 +35,7 @@ export async function decodeSong(str) {
   } else json = new TextDecoder().decode(bytes);
   const d = JSON.parse(json);
   if (!d || d.v !== 1 || !Array.isArray(d.heads) || !d.heads.length) throw new Error('bad song');
-  return { v: 1, lang: d.lang === 'en' ? 'en' : 'pl', mood: d.mood || 'happy', key: +d.key || 0, bpm: d.bpm || null, seed: +d.seed || 7, lines: (d.lines || []).slice(0, 80), heads: d.heads.slice(0, 6), melody: d.melody || {}, track: cleanTrack(d.track) };
+  return { v: 1, lang: d.lang === 'en' ? 'en' : 'pl', mood: d.mood || 'happy', key: +d.key || 0, bpm: d.bpm || null, seed: +d.seed || 7, lines: (d.lines || []).slice(0, 80), heads: d.heads.slice(0, 6), melody: d.melody || {}, track: cleanTrack(d.track), beat: d.beat && typeof d.beat.text === 'string' ? { id: String(d.beat.id || 'custom').slice(0, 24), text: d.beat.text.slice(0, 600), swing: Math.max(0, Math.min(0.6, +d.beat.swing || 0)) } : undefined, bassPat: typeof d.bassPat === 'string' ? d.bassPat.slice(0, 16) : undefined };
 }
 
 function cleanTrack(t) {
@@ -54,27 +54,34 @@ function cleanTrack(t) {
 export async function renderWav(job, onProgress) {
   const sr = 48000;
   const dur = job.duration + 0.6;
+  const units = buildUnits(job.arr, job.parts, job.heads, job.lang, sr);
+  let done = 0;
+  const got = await Promise.all(units.map((u) => pool.request(u.spec, 10).then((x) => { done++; onProgress && onProgress(0.9 * done / units.length); return x; })));
   const oc = new OfflineAudioContext(2, Math.ceil(dur * sr), sr);
-  await oc.audioWorklet.addModule(await workletSource());
   const chain = buildChain(oc);
   chain.clip.connect(oc.destination);
+  const strips = new Map();
   job.heads.forEach((h, i) => {
-    const p = job.parts[h.id];
-    if (!p) return;
-    const cfg = engineCfg(h);
     const mix = voiceMix(job.heads, i, h);
-    const node = new AudioWorkletNode(oc, 'wire-voice', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { steps: 2, seed: 1000 + i, cfg } });
     const gain = oc.createGain(); gain.gain.value = mix.volume;
     const pan = oc.createStereoPanner(); pan.pan.value = mix.pan;
-    const send = oc.createGain(); send.gain.value = cfg.send ?? 0.35;
-    node.connect(gain).connect(pan);
+    const send = oc.createGain(); send.gain.value = engineCfg(h).send ?? 0.35;
+    gain.connect(pan);
     pan.connect(chain.dry);
     pan.connect(send).connect(chain.wetIn);
-    const segs = p.drums.length ? planDrums(p.drums) : planNotes(p.notes, job.lang);
-    node.port.postMessage({ t: 'segs', mode: 'abs', replace: true, segs: segs.map((s) => ({ ...s, at: s.at + 0.1, p: Array.from(s.p) })) });
+    strips.set(h.id, gain);
   });
-  await new Promise((r) => setTimeout(r, 60));
-  for (let t = 1; t < dur; t += 1) oc.suspend(t).then(() => { onProgress && onProgress(t / dur); oc.resume(); });
+  units.forEach((u, i) => {
+    const out = strips.get(u.head), unit = got[i];
+    if (!out) return;
+    const src = oc.createBufferSource();
+    const b = oc.createBuffer(1, unit.pcm.length, unit.fs);
+    b.copyToChannel(unit.pcm, 0);
+    src.buffer = b;
+    src.connect(out);
+    const when = 0.1 + u.at - unit.lead;
+    src.start(Math.max(0, when), Math.max(0, -when));
+  });
   const buf = await oc.startRendering();
   onProgress && onProgress(1);
   return wavBlob(buf);

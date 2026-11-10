@@ -170,8 +170,10 @@ export function mountPlay(body, app) {
 
   async function startRec() {
     await app.ensureAudio();
-    rec = { ev: [], startPos: pos, t0: null, backing: app.startBacking() };
-    rec.t0 = rec.backing ? rec.backing.t0Perf : null;
+    const backing = app.startBacking();
+    if (backing) await backing.ready;
+    rec = { ev: [], startPos: pos, t0: null, backing };
+    rec.t0 = backing ? backing.t0Perf : null;
     renderRow(); renderStatus();
   }
   function stopRec() {

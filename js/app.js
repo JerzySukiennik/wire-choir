@@ -1,9 +1,9 @@
 // Wire Choir app: song state, floating heads, typing dock (Enter sings, Shift+Enter saves, Space plays), rail windows.
 import { AudioSystem } from './audio.js';
-import { Player } from './player.js';
+import { Player, pool } from './player.js';
 import { Stage } from './stage/stage.js';
 import { parseLyrics, prepareLang } from './lyrics.js';
-import { arrange, buildParts, MOODS } from './composer.js';
+import { arrange, buildParts, MOODS, stepToMidi } from './composer.js';
 import { PRESETS, LOOKS, INSTS, applyInst, midiToHz, noteName, NOTE_NAMES } from './voices.js';
 import { avatarAvailable } from './stage/avatar.js';
 import { REST_PARAMS } from './voice/engine.js';
@@ -12,6 +12,8 @@ import { mountNotes } from './ui/notes.js';
 import { mountPlay } from './ui/play.js';
 import { mountExport } from './ui/export.js';
 import { mountListen } from './ui/listen.js';
+import { mountPresets } from './ui/presets.js';
+import { PHRASES, BEATS, phraseSyllables, phraseMelody } from './presets.js';
 import { decodeSong, videoMime } from './share.js';
 import { lineIds } from './composer.js';
 
@@ -25,15 +27,17 @@ const T = {
     lines: (n) => (n === 0 ? 'Pusta piosenka' : n === 1 ? '1 linijka' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} linijki` : `${n} linijek`),
     roles: { lead: 'Prowadzi', harmony: 'Harmonia', choir: 'Chór', bass: 'Bas', beatbox: 'Beatbox', inst: 'Instrument' }, instLbl: 'Instrument',
     moods: { happy: 'Radosny', ballad: 'Ballada', sad: 'Smutny', dark: 'Mroczny', hymn: 'Hymn' },
-    major: 'dur', minor: 'moll', head: 'Głowa', role: 'Rola', look: 'Wygląd i brzmienie', voice: 'Głos', register: 'Rejestr', throat: 'Gardło', breath: 'Oddech',
-    soft: 'Miękkość', vib: 'Wibrato', rough: 'Chrypka', volume: 'Głośność', listen: 'Przytrzymaj, żeby posłuchać', remove: 'Usuń głowę',
+    major: 'dur', minor: 'moll', head: 'Głowa', role: 'Rola', look: 'Wygląd i brzmienie', voice: 'Głos', register: 'Rejestr', throat: 'Gardło', fem: 'Ciało kobiece', kid: 'Ciało dziecka', modeTip: 'Śpiew albo mowa', spokenShort: 'mowa', breath: 'Oddech',
+    soft: 'Miękkość', vib: 'Wibrato', rough: 'Chrypka', volume: 'Głośność', listen: 'Posłuchaj tej głowy', remove: 'Usuń głowę',
     harm: 'Interwał', harms: { up3: 'Tercja wyżej', down3: 'Tercja niżej', down6: 'Seksta niżej', up5: 'Kwinta wyżej' },
     vowel: 'Samogłoska', density: 'Gęstość', dens: { calm: 'Spokojny', normal: 'Normalny', busy: 'Gęsty' },
     mood: 'Nastrój', key: 'Tonacja', tempo: 'Tempo', lang: 'Język', saved_lines: 'Linijki', playAll: 'Odtwórz całość', stopAll: 'Zatrzymaj',
     newMelody: 'Nowa melodia', emptySong: 'Napisz linijkę na dole i wciśnij Shift+Enter, żeby ją tu zapisać.', newMelodyDone: 'Nowa melodia gotowa',
     noLead: 'Żadna głowa nie prowadzi, więc tekst nie zostanie zaśpiewany. Ustaw rolę „Prowadzi” w oknie Głowy.', maxHeads: 'Maksymalnie 6 głów', all: 'wszyscy',
-    keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'dodaj do piosenki'], ['␣', 'odtwórz całość']], afterHint: [['⇧⏎', 'dodaj tę linijkę do piosenki'], ['↑', 'popraw']], who: 'Kto śpiewa: kliknij, żeby zmienić',
-    notes: 'Nuty', play: 'Graj', exp: 'Eksport', listenWin: 'Słuchaj',
+    keysHint: [['⏎', 'zaśpiewaj'], ['⇧⏎', 'dodaj do piosenki'], ['␣', 'odtwórz całość'], ['>', 'powiedz']], afterHint: [['⇧⏎', 'dodaj tę linijkę do piosenki'], ['↑', 'popraw']], who: 'Kto śpiewa: kliknij, żeby zmienić',
+    notes: 'Nuty', play: 'Graj', exp: 'Eksport', listenWin: 'Słuchaj', rendering: 'Głowy ćwiczą', presetsWin: 'Gotowce',
+    pStarters: 'Zestawy startowe', pConfirm: 'Zastąpić piosenkę? Kliknij jeszcze raz', pNote: 'Kliknij frazę, żeby ją usłyszeć. Plus dodaje ją do piosenki z gotową melodią w Twojej tonacji.', pAdd: 'Dodaj do piosenki',
+    pBeats: 'Bity (beatbox)', pBeatPh: 'własny wzór, np. B . t . | Pf . t .', pBeatKit: 'Dźwięki:', pRest: 'pauza', pBass: 'Bas',
     lsNote: 'Puść piosenkę obok mikrofonu albo wybierz plik. Chór usłyszy tempo, melodię, bas, rytm, akordy, instrumenty, słowa i język, a potem sam ustawi głowy i to zagra.',
     lsRecognize: 'Rozpoznaj', lsWordsOpt: 'Słowa i język', lsHeadsOpt: 'Instrumenty i głowy', lsAuto: 'Auto', lsHeard: 'Słyszę', lsDrumsHeard: 'Perkusja',
     lsVoice: { robot: 'Wokal robota', ghost: 'Szept', low: 'Niski wokal', voice: 'Wokal' },
@@ -61,15 +65,17 @@ const T = {
     lines: (n) => (n === 0 ? 'Empty song' : n === 1 ? '1 line' : `${n} lines`),
     roles: { lead: 'Lead', harmony: 'Harmony', choir: 'Choir', bass: 'Bass', beatbox: 'Beatbox', inst: 'Instrument' }, instLbl: 'Instrument',
     moods: { happy: 'Happy', ballad: 'Ballad', sad: 'Sad', dark: 'Dark', hymn: 'Hymn' },
-    major: 'major', minor: 'minor', head: 'Head', role: 'Role', look: 'Look and sound', voice: 'Voice', register: 'Register', throat: 'Throat', breath: 'Breath',
-    soft: 'Softness', vib: 'Vibrato', rough: 'Rasp', volume: 'Volume', listen: 'Hold to listen', remove: 'Remove head',
+    major: 'major', minor: 'minor', head: 'Head', role: 'Role', look: 'Look and sound', voice: 'Voice', register: 'Register', throat: 'Throat', fem: 'Female body', kid: 'Child body', modeTip: 'Sung or spoken', spokenShort: 'spoken', breath: 'Breath',
+    soft: 'Softness', vib: 'Vibrato', rough: 'Rasp', volume: 'Volume', listen: 'Hear this head', remove: 'Remove head',
     harm: 'Interval', harms: { up3: 'Third above', down3: 'Third below', down6: 'Sixth below', up5: 'Fifth above' },
     vowel: 'Vowel', density: 'Density', dens: { calm: 'Calm', normal: 'Normal', busy: 'Busy' },
     mood: 'Mood', key: 'Key', tempo: 'Tempo', lang: 'Language', saved_lines: 'Lines', playAll: 'Play all', stopAll: 'Stop',
     newMelody: 'New melody', emptySong: 'Type a line below and press Shift+Enter to save it here.', newMelodyDone: 'New melody ready',
     noLead: 'No head is set to Lead, so the words won’t be sung. Set a head to “Lead” in the Heads window.', maxHeads: 'Up to 6 heads', all: 'everyone',
-    keysHint: [['⏎', 'sing'], ['⇧⏎', 'add to song'], ['␣', 'play all']], afterHint: [['⇧⏎', 'add this line to the song'], ['↑', 'edit']], who: 'Who sings: click to change',
-    notes: 'Notes', play: 'Play', exp: 'Export', listenWin: 'Listen',
+    keysHint: [['⏎', 'sing'], ['⇧⏎', 'add to song'], ['␣', 'play all'], ['>', 'speak']], afterHint: [['⇧⏎', 'add this line to the song'], ['↑', 'edit']], who: 'Who sings: click to change',
+    notes: 'Notes', play: 'Play', exp: 'Export', listenWin: 'Listen', rendering: 'The heads are rehearsing', presetsWin: 'Blocks',
+    pStarters: 'Starter sets', pConfirm: 'Replace the song? Click again', pNote: 'Click a phrase to hear it. Plus adds it to the song with its melody in your key.', pAdd: 'Add to the song',
+    pBeats: 'Beats (beatbox)', pBeatPh: 'your own pattern, e.g. B . t . | Pf . t .', pBeatKit: 'Sounds:', pRest: 'rest', pBass: 'Bass',
     lsNote: 'Play a song next to the microphone or pick a file. The choir hears the tempo, melody, bass, beat, chords, instruments, words and language, then sets up the heads and plays it.',
     lsRecognize: 'Recognize', lsWordsOpt: 'Words and language', lsHeadsOpt: 'Instruments and heads', lsAuto: 'Auto', lsHeard: 'Heard', lsDrumsHeard: 'Drums',
     lsVoice: { robot: 'Robot vocal', ghost: 'Whisper', low: 'Low vocal', voice: 'Vocal' },
@@ -117,7 +123,7 @@ let audioReady = false;
 async function ensureAudio() {
   await sys.start();
   await sys.resume();
-  if (!audioReady) { audioReady = true; player.sync(song.heads); }
+  if (!audioReady) { audioReady = true; player.sync(song.heads); pool.init().catch((e) => toast(t().exportFail + ' ' + e.message, 5000)); schedulePrepare(); }
 }
 
 let hasAvatar = false;
@@ -187,6 +193,15 @@ const input = $('#input'), kara = $('#kara');
 let lastSung = '', lastSaved = true;
 function autosize() { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; }
 
+function lineOpts(lines) {
+  const lineSpoken = {};
+  lines.forEach((l, i) => { if (l.spoken) lineSpoken[i] = true; });
+  return { lineSingers: singersFor(lines), lineSpoken };
+}
+const body3 = (h) => {
+  const fem = +(h.fem ?? ({ alto: 1, soprano: 1 }[h.preset] || 0)), kid = +(h.kid ?? (h.preset === 'child' ? 1 : 0));
+  return 17.6 - 2.7 * fem - (5.4 - 2.7 * fem) * kid;
+};
 function singersFor(lines) {
   const out = {};
   lines.forEach((l, i) => { if (l.singers && l.singers.length) out[i] = l.singers; });
@@ -207,8 +222,10 @@ function karaokeHTML(text, notes) {
   return html + esc(text.slice(pos));
 }
 
-async function singLine(text) {
+async function singLine(text, mel) {
   text = text.trim();
+  const spoken = text.startsWith('>');
+  if (spoken) text = text.slice(1).trim();
   if (!text) return;
   await ensureAudio();
   await prepareLang(song.lang);
@@ -216,17 +233,20 @@ async function singLine(text) {
   if (!parsed.syls.length) return;
   const leads = song.heads.filter((h) => h.role === 'lead').map((h) => h.id);
   if (!leads.length) toast(t().noLead, 4200);
-  const arr = arrange({ ...song, track: null, lineSingers: { 0: leads } }, parsed, song.heads, { intro: false });
+  const base = mel && mel.notes.length === parsed.syls.length ? { ...song, melody: { [lineIds(parsed)[0]]: mel } } : song;
+  const arr = arrange({ ...base, track: null, lineSingers: { 0: leads }, lineSpoken: spoken ? { 0: true } : {} }, parsed, song.heads, { intro: false });
   const parts = buildParts(arr, song.heads);
   const notes = arr.notes.map((n) => ({ ...n, t0: n.b * arr.spb, t1: (n.b + n.d) * arr.spb }));
-  const backing = song.heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
-  const dur = backing ? arr.duration : Math.max(...notes.map((n) => n.t1)) + 0.7;
-  player.play(arr, parts, song.lang, song.heads, dur);
-  current = { mode: 'line', parsed, arr: { ...arr, duration: dur }, notes, color: colorOf(leads[0]) };
+  const backing = song.heads.some((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox' || h.role === 'inst');
+  const dur = backing ? arr.duration : Math.max(...notes.map((n) => n.t1)) + (spoken ? 1.2 : 0.7);
+  if (spoken) text = '> ' + text;
   lastSung = text;
-  lastSaved = song.lines.some((l) => l.text === text);
+  lastSaved = song.lines.some((l) => (l.spoken ? '> ' + l.text : l.text) === text);
   renderHint();
-  kara.innerHTML = karaokeHTML(text, notes);
+  current = null;
+  if (!(await startPlay(arr, parts, song.heads, dur))) return;
+  current = { mode: 'line', parsed, arr: { ...arr, duration: dur }, notes, color: colorOf(leads[0]) };
+  kara.innerHTML = karaokeHTML(spoken ? text.slice(2) : text, notes);
   if (!input.value) karaShow(); else karaHide(false);
   updateStatus();
 }
@@ -236,9 +256,10 @@ async function playSong() {
   await ensureAudio();
   await prepareLang(song.lang);
   const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
-  const arr = arrange({ ...song, lineSingers: singersFor(song.lines) }, parsed, song.heads);
+  const arr = arrange({ ...song, ...lineOpts(song.lines) }, parsed, song.heads);
   const parts = buildParts(arr, song.heads);
-  player.play(arr, parts, song.lang, song.heads);
+  current = null;
+  if (!(await startPlay(arr, parts, song.heads))) return;
   const notes = arr.notes.map((n) => ({ ...n, t0: n.b * arr.spb, t1: (n.b + n.d) * arr.spb }));
   current = { mode: 'song', parsed, arr, notes, line: -1 };
   kara.innerHTML = '';
@@ -246,15 +267,57 @@ async function playSong() {
   updateStatus();
 }
 
+async function startPlay(arr, parts, heads, dur) {
+  try { return await player.play(arr, parts, song.lang, heads, dur); }
+  catch (e) { toast(t().exportFail + ' ' + (e && e.message), 5000); return false; }
+}
+player.onProgress = () => updateStatus();
+
+let prepTimer = 0;
+function schedulePrepare(ms = 700) {
+  clearTimeout(prepTimer);
+  prepTimer = setTimeout(async () => {
+    if (!audioReady || player.loading || !song.lines.length) return;
+    try {
+      await prepareLang(song.lang);
+      const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
+      if (!parsed.syls.length) return;
+      const arr = arrange({ ...song, ...lineOpts(song.lines) }, parsed, song.heads);
+      player.prepare(arr, buildParts(arr, song.heads), song.lang, song.heads);
+    } catch (e) {}
+  }, ms);
+}
+let typeTimer = 0;
+function scheduleTyped() {
+  clearTimeout(typeTimer);
+  typeTimer = setTimeout(async () => {
+    const text = input.value.trim();
+    if (!audioReady || player.loading || player.playing || text.length < 2) return;
+    try {
+      await prepareLang(song.lang);
+      const parsed = parseLyrics(text.replace(/^>\s*/, ''), song.lang);
+      if (!parsed.syls.length) return;
+      const leads = song.heads.filter((h) => h.role === 'lead').map((h) => h.id);
+      const sp = text.startsWith('>');
+      const arr = arrange({ ...song, track: null, lineSingers: { 0: leads }, lineSpoken: sp ? { 0: true } : {} }, parsed, song.heads, { intro: false });
+      player.prepare(arr, buildParts(arr, song.heads), song.lang, song.heads);
+    } catch (e) {}
+  }, 450);
+}
+
 function stopAll() { player.stop(); }
-function toggleSong() { if (player.playing) stopAll(); else playSong(); }
+function toggleSong() { if (player.playing || player.loading) stopAll(); else playSong(); }
 function colorOf(id) { const h = song.heads.find((x) => x.id === id); return h ? h.wordColor : '#f5f5f7'; }
 
 function saveLine(text) {
   text = text.trim();
   if (!text) return;
-  song.lines.push({ text, singers: [] });
-  if (text === lastSung) lastSaved = true;
+  const was = text;
+  const spoken = text.startsWith('>');
+  if (spoken) text = text.slice(1).trim();
+  if (!text) return;
+  song.lines.push(spoken ? { text, singers: [], spoken: true } : { text, singers: [] });
+  if (was === lastSung) lastSaved = true;
   commit();
   renderHint();
   toast(t().saved(song.lines.length));
@@ -289,7 +352,8 @@ function send() {
   autosize();
   singLine(v);
 }
-input.addEventListener('input', () => { autosize(); if (input.value) karaHide(false); });
+input.addEventListener('input', () => { autosize(); if (input.value) karaHide(false); scheduleTyped(); });
+window.addEventListener('pointerdown', function wake() { window.removeEventListener('pointerdown', wake); ensureAudio().catch(() => {}); }, { once: true });
 $('#save').addEventListener('click', () => { saveNow(); input.focus(); });
 $('#dock').addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) setTimeout(() => input.focus(), 0); });
 window.addEventListener('keydown', (e) => {
@@ -314,14 +378,15 @@ function keyName() { const m = MOODS[song.mood] || MOODS.happy; return NOTE_NAME
 function bpm() { return song.bpm || (MOODS[song.mood] || MOODS.happy).bpm; }
 function updateStatus() {
   const s = $('#status');
-  if (current && player.playing) s.textContent = `${t().singing} · ${fmt(player.time())} / ${fmt(current.arr.duration)}`;
+  if (player.loading && !player.playing) s.textContent = `${t().rendering} · ${player.loading.done}/${player.loading.total}`;
+  else if (current && player.playing) s.textContent = `${t().singing} · ${fmt(Math.max(0, player.time()))} / ${fmt(current.arr.duration)}`;
   else s.textContent = [t().lines(song.lines.length), t().moods[song.mood], keyName(), bpm() + ' BPM', song.lang.toUpperCase()].join(' · ');
 }
 function renderChrome() {
   document.documentElement.lang = song.lang;
   input.placeholder = t().placeholder;
   renderHint();
-  const labels = { heads: t().heads, song: t().song, notes: t().notes, play: t().play, listen: t().listenWin, export: t().exp };
+  const labels = { heads: t().heads, song: t().song, notes: t().notes, play: t().play, presets: t().presetsWin, listen: t().listenWin, export: t().exp };
   document.querySelectorAll('#rail button').forEach((b) => { b.querySelector('span').textContent = labels[b.dataset.open]; b.setAttribute('aria-label', labels[b.dataset.open]); });
   updateStatus();
 }
@@ -346,13 +411,13 @@ $('#history').addEventListener('click', (e) => {
   const b = e.target.closest('[data-l]');
   if (!b) return;
   const l = song.lines[+b.dataset.l];
-  if (l) singLine(l.text);
+  if (l) singLine(l.spoken ? '> ' + l.text : l.text);
 });
 
 
 const wins = {};
-const MODS = { notes: mountNotes, play: mountPlay, listen: mountListen, export: mountExport };
-const TITLE = { heads: () => t().heads, song: () => t().song, notes: () => t().notes, play: () => t().play, listen: () => t().listenWin, export: () => t().exp };
+const MODS = { notes: mountNotes, play: mountPlay, listen: mountListen, export: mountExport, presets: mountPresets };
+const TITLE = { heads: () => t().heads, song: () => t().song, notes: () => t().notes, play: () => t().play, listen: () => t().listenWin, export: () => t().exp, presets: () => t().presetsWin };
 function openWin(name) {
   if (wins[name]) { wins[name].close(); return; }
   const W = window.innerWidth, H = window.innerHeight;
@@ -363,6 +428,7 @@ function openWin(name) {
     play: { w: 520, h: 330, x: Math.max(60, W / 2 - 260), y: Math.max(50, H * 0.4) },
     export: { w: 340, h: 430, x: Math.max(60, W - 400), y: 60 },
     listen: { w: 380, h: 560, x: Math.max(60, W - 440), y: 50 },
+    presets: { w: 400, h: Math.min(640, H - 90), x: Math.max(60, W - 460), y: 50 },
   }[name];
   const w = new Win(name, TITLE[name](), cfg);
   w.onClose = () => {
@@ -388,8 +454,9 @@ function commit(opts = {}) {
   save();
   syncPanels();
   if (audioReady) player.sync(song.heads);
+  schedulePrepare();
   if (!opts.keepWins) { renderWin('heads'); renderWin('song'); }
-  renderWin('notes'); renderWin('play'); renderWin('listen');
+  renderWin('notes'); renderWin('play'); renderWin('listen'); renderWin('presets');
   renderHistory();
   renderChrome();
 }
@@ -412,6 +479,8 @@ function label(text, val) { const d = document.createElement('div'); d.className
 
 function slider(h, key, name, min, max, step, fmtv) {
   const wrap = document.createDocumentFragment();
+  if (key === 'fem' && h.fem === undefined) h.fem = { alto: 1, soprano: 1 }[h.preset] || 0;
+  if (key === 'kid' && h.kid === undefined) h.kid = h.preset === 'child' ? 1 : 0;
   const lb = label(name, fmtv(h[key]));
   const r = document.createElement('input');
   r.type = 'range'; r.min = min; r.max = max; r.step = step; r.value = h[key];
@@ -421,28 +490,18 @@ function slider(h, key, name, min, max, step, fmtv) {
     lb.querySelector('b').textContent = fmtv(h[key]);
     save();
     if (audioReady) player.sync(song.heads);
-    if (key === 'tract') syncPanels();
-    if (previewing === h.id && audioReady) player.preview(h, true);
+    schedulePrepare(1500);
+    if (key === 'fem' || key === 'kid') { h.tract = +body3(h).toFixed(2); syncPanels(); }
   });
-  r.addEventListener('pointerdown', () => startPreview(h));
-  r.addEventListener('pointerup', stopPreview);
-  r.addEventListener('pointercancel', stopPreview);
+  r.addEventListener('change', () => audition(h));
   wrap.append(lb, r);
   return wrap;
 }
 
-let previewing = null;
-async function startPreview(h) {
+async function audition(h) {
   await ensureAudio();
-  previewing = h.id;
-  if (h.role === 'beatbox') return;
-  player.preview(h, true);
-}
-function stopPreview() {
-  if (!previewing) return;
-  const h = song.heads.find((x) => x.id === previewing);
-  previewing = null;
-  if (h && h.role !== 'beatbox') player.preview(h, false);
+  if (player.playing || player.loading) return;
+  try { await player.audition(h, song.beat && song.beat.text); } catch (e) {}
 }
 
 function renderHeads(body) {
@@ -479,22 +538,23 @@ function renderHeads(body) {
       const p = PRESETS[h.preset] || PRESETS.baritone;
       Object.assign(h, { lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, vibRate: 5.6, rough: p.rough }, LOOKS[k].voice || {});
       commit();
-      startPreview(h); setTimeout(stopPreview, 900);
+      audition(h);
     }));
     ed.append(label(L.role), chips(ROLES.map((r) => [r, L.roles[r]]), h.role, (r) => { h.role = r; if (r === 'inst' && !h.inst) applyInst(h, 'synth'); commit(); }));
-    if (h.role === 'inst') ed.append(label(L.instLbl), chips(Object.keys(INSTS).map((k) => [k, INSTS[k][song.lang]]), h.inst || 'synth', (k) => { applyInst(h, k); commit(); startPreview(h); setTimeout(stopPreview, 800); }));
+    if (h.role === 'inst') ed.append(label(L.instLbl), chips(Object.keys(INSTS).map((k) => [k, INSTS[k][song.lang]]), h.inst || 'synth', (k) => { applyInst(h, k); commit(); audition(h); }));
     ed.append(label(L.voice), chips(Object.keys(PRESETS).map((k) => [k, PRESETS[k][song.lang]]), h.preset, (k) => {
       const p = PRESETS[k];
-      Object.assign(h, { preset: k, lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, rough: p.rough, shift: 0 });
+      Object.assign(h, { preset: k, lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, rough: p.rough, shift: 0, fem: { alto: 1, soprano: 1 }[k] || 0, kid: k === 'child' ? 1 : 0 });
       commit();
-      startPreview(h); setTimeout(stopPreview, 700);
+      audition(h);
     }));
     if (h.role === 'harmony') ed.append(label(L.harm), chips(Object.entries(L.harms), h.harm, (v) => { h.harm = v; commit(); }));
     if (h.role === 'choir') ed.append(label(L.vowel), chips([['u', 'u'], ['o', 'o'], ['a', 'a'], ['M', 'mmm']], h.vowel, (v) => { h.vowel = v; commit(); }));
     if (h.role === 'beatbox') ed.append(label(L.density), chips(Object.entries(L.dens), h.density, (v) => { h.density = v; commit(); }));
     ed.append(
       slider(h, 'shift', L.register, -12, 12, 1, (v) => noteName((h.lo + h.hi) / 2 + v)),
-      slider(h, 'tract', L.throat, 11, 20, 0.1, (v) => v.toFixed(1) + ' cm'),
+      slider(h, 'fem', L.fem, 0, 1, 0.01, (v) => Math.round(v * 100) + '%'),
+      slider(h, 'kid', L.kid, 0, 1, 0.01, (v) => Math.round(v * 100) + '%'),
       slider(h, 'breath', L.breath, 0, 1, 0.01, (v) => Math.round(v * 100) + '%'),
       slider(h, 'rd', L.soft, 0.4, 2.4, 0.01, (v) => v.toFixed(2)),
       slider(h, 'vib', L.vib, 0, 90, 1, (v) => v + ' c'),
@@ -504,9 +564,7 @@ function renderHeads(body) {
     const ls = document.createElement('button');
     ls.className = 'listen';
     ls.textContent = L.listen;
-    ls.addEventListener('pointerdown', (e) => { ls.setPointerCapture(e.pointerId); ls.classList.add('on'); startPreview(h); });
-    const off = () => { ls.classList.remove('on'); stopPreview(); };
-    ls.addEventListener('pointerup', off); ls.addEventListener('pointercancel', off);
+    ls.addEventListener('click', () => audition(h));
     ed.append(ls);
     if (song.heads.length > 1) {
       const rm = document.createElement('button');
@@ -548,10 +606,11 @@ function renderSong(body) {
     r.className = 'lrow';
     const who = l.singers && l.singers.length ? l.singers : [];
     const c = who.length === 1 ? colorOf(who[0]) && (song.heads.find((x) => x.id === who[0]) || {}).color : who.length > 1 ? '#f5f5f7' : (leads[0] || {}).color || '#4fd2ff';
-    r.innerHTML = `<button aria-label="${L.sing}">▶</button><p contenteditable="true" spellcheck="false">${esc(l.text)}</p><button class="who" title="${L.who}" style="background:${c}"></button><button aria-label="×">×</button>`;
-    const [pb, , wb, xb] = r.children;
+    r.innerHTML = `<button aria-label="${L.sing}">▶</button><p contenteditable="true" spellcheck="false">${esc(l.text)}</p><button class="mode" title="${L.modeTip}">${l.spoken ? L.spokenShort : '♪'}</button><button class="who" title="${L.who}" style="background:${c}"></button><button aria-label="×">×</button>`;
+    const [pb, , mb, wb, xb] = r.children;
     const p = r.querySelector('p');
-    pb.addEventListener('click', () => singLine(l.text));
+    pb.addEventListener('click', () => singLine(l.spoken ? '> ' + l.text : l.text));
+    mb.addEventListener('click', () => { if (l.spoken) delete l.spoken; else l.spoken = true; commit(); });
     p.addEventListener('blur', () => { const v = p.textContent.trim(); if (v && v !== l.text) { l.text = v; commit({ keepWins: true }); } });
     p.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); p.blur(); } });
     wb.addEventListener('click', () => {
@@ -583,7 +642,8 @@ let last = performance.now(), statusT = 0, lastActive = 0;
 function loop() {
   requestAnimationFrame(loop);
   const now = performance.now();
-  const active = player.playing || previewing || dragP || stage.recording || wins.notes || [...player.voices.values()].some((v) => v.level > 0.001);
+  const active = player.playing || player.loading || dragP || stage.recording || wins.notes || [...player.voices.values()].some((v) => v.level > 0.001);
+  player.frame();
   if (active) lastActive = now;
   if (now - lastActive > 1500 && now - last < 40) return;
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -702,9 +762,12 @@ async function recordVideo(fmt, onProg) {
     }
     if (current) onProg && onProg(Math.max(0, Math.min(1, tt / current.arr.duration)));
   };
+  const job = await app.songJob();
+  if (job) await Promise.all(player.units(job.arr, job.parts, job.lang, job.heads).map((u) => pool.request(u.spec, 10)));
   mr.start(250);
   const done = new Promise((res) => { const prev = player.onEnd; player.onEnd = () => { player.onEnd = prev; prev && prev(); res(); }; });
   await playSong();
+  if (!current) { player.onEnd && player.onEnd(); }
   await done;
   await new Promise((r) => setTimeout(r, 700));
   const stopped = new Promise((r) => { mr.onstop = r; });
@@ -765,13 +828,13 @@ const app = {
     if (!song.lines.length) return null;
     await prepareLang(song.lang);
     const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
-    const arr = arrange({ ...song, lineSingers: singersFor(song.lines) }, parsed, song.heads);
+    const arr = arrange({ ...song, ...lineOpts(song.lines) }, parsed, song.heads);
     return { parsed, arr, notes: arr.notes };
   },
   async songJob() {
     const a = await app.arrangement();
     if (!a) return null;
-    return { heads: song.heads, parts: buildParts(a.arr, song.heads), lang: song.lang, duration: a.arr.duration };
+    return { heads: song.heads, parts: buildParts(a.arr, song.heads), lang: song.lang, duration: a.arr.duration, arr: a.arr };
   },
   async previewNote(n) {
     await ensureAudio();
@@ -794,10 +857,11 @@ const app = {
     const back = song.heads.filter((h) => h.role === 'choir' || h.role === 'bass' || h.role === 'beatbox');
     if (!back.length || !song.lines.length) return null;
     const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
-    const arr = arrange({ ...song, lineSingers: singersFor(song.lines) }, parsed, song.heads);
+    const arr = arrange({ ...song, ...lineOpts(song.lines) }, parsed, song.heads);
     const parts = buildParts(arr, back);
-    player.play(arr, parts, song.lang, back);
-    return { t0Perf: performance.now() + (player.t0 - sys.ctx.currentTime) * 1000 };
+    const out = { t0Perf: null };
+    out.ready = startPlay(arr, parts, back).then((ok) => { if (ok) out.t0Perf = performance.now() + (player.t0 - sys.ctx.currentTime) * 1000; return ok; });
+    return out;
   },
   saveRecording, recordVideo,
   newHead: (role, idx, inst) => newHead(role, idx, inst),
@@ -817,6 +881,52 @@ const app = {
     if (want.drums) while (s.heads.filter((h) => h.role === 'beatbox').length < 2 && s.heads.length < 6) add('beatbox');
   },
   playFromStart() { if (song.lines.length) playSong(); },
+  phraseMel(p) { const mode = (MOODS[song.mood] || MOODS.happy).mode; return p.n ? phraseMelody(p, (st) => stepToMidi(st, song.key, mode)) : null; },
+  previewPhrase(p) { return singLine((p.spoken ? '> ' : '') + p[song.lang], app.phraseMel(p)); },
+  async addPhrase(p, quiet) {
+    await prepareLang(song.lang);
+    const text = p[song.lang];
+    song.lines.push(p.spoken ? { text, singers: [], spoken: true } : { text, singers: [] });
+    const mel = app.phraseMel(p);
+    if (mel) {
+      const parsed = parseLyrics(song.lines.map((l) => l.text).join('\n'), song.lang);
+      const last = parsed.lines[parsed.lines.length - 1];
+      if (last && last.syls.length === mel.notes.length) song.melody = { ...(song.melody && !Array.isArray(song.melody) ? song.melody : {}), [lineIds(parsed)[parsed.lines.length - 1]]: mel };
+    }
+    if (!quiet) { commit(); toast(t().saved(song.lines.length)); }
+  },
+  setBeat(b) {
+    if (b.text) song.beat = { id: b.id, text: b.text, swing: b.swing || 0 }; else delete song.beat;
+    if (b.text && !song.heads.some((h) => h.role === 'beatbox') && song.heads.length < 6) song.heads.push(newHead('beatbox', song.heads.length));
+    commit();
+  },
+  setBass(id) {
+    if (id) song.bassPat = id; else delete song.bassPat;
+    if (id && !song.heads.some((h) => h.role === 'bass') && song.heads.length < 6) song.heads.push(newHead('bass', song.heads.length));
+    commit();
+  },
+  async applyStarter(st) {
+    player.stop(true);
+    current = null;
+    const heads = st.heads.map(([role, preset, look, extra], i) => {
+      const h = newHead(role, i, extra && extra.inst);
+      if (role !== 'inst') { const p = PRESETS[preset]; Object.assign(h, { preset, lo: p.lo, hi: p.hi, tract: p.tract, rd: p.rd, breath: p.breath, vib: p.vib, rough: p.rough, fem: { alto: 1, soprano: 1 }[preset] || 0, kid: preset === 'child' ? 1 : 0 }); }
+      h.look = look;
+      Object.assign(h, LOOKS[look].voice || {}, extra || {});
+      return h;
+    });
+    const beat = BEATS.find((b) => b.id === st.beat);
+    song = { v: 1, lang: song.lang, mood: st.mood, key: song.key || 0, bpm: st.bpm, seed: 7, lines: [], heads, melody: {} };
+    if (beat && beat.text) song.beat = { id: beat.id, text: beat.text, swing: beat.swing || 0 };
+    if (st.bass) song.bassPat = st.bass;
+    for (const id of st.lines) { const p = PHRASES.find((x) => x.id === id); if (p) await app.addPhrase(p, true); }
+    expanded = song.heads[0].id;
+    kara.innerHTML = '';
+    commit();
+    document.body.style.setProperty('--head', song.heads[0].color);
+    toast(st.name[song.lang]);
+    setTimeout(() => playSong(), 200);
+  },
   fileName: (ext) => 'wire-choir-' + ((song.lines[0] && song.lines[0].text) || 'piosenka').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '.' + ext,
 };
 
@@ -842,5 +952,5 @@ if (window.visualViewport) {
   vv.addEventListener('resize', onVV);
   vv.addEventListener('scroll', onVV);
 }
-window.__wc = { sys, player, stage, app };
+window.__wc = { sys, player, stage, app, pool };
 loop();

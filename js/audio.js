@@ -37,7 +37,7 @@ export function makeImpulse(ctx, secs, decay) {
 export function buildChain(ctx) {
   const c = {};
   c.master = ctx.createGain();
-  c.master.gain.value = 0.9;
+  c.master.gain.value = 0.6;
   c.glue = ctx.createDynamicsCompressor();
   c.glue.threshold.value = -16; c.glue.knee.value = 10; c.glue.ratio.value = 3;
   c.glue.attack.value = 0.008; c.glue.release.value = 0.25;
@@ -55,7 +55,11 @@ export function buildChain(ctx) {
   c.verb.buffer = makeImpulse(ctx, 1.9, 3.0);
   c.wet = ctx.createGain();
   c.wet.gain.value = 0.45;
-  c.dry.connect(c.master);
+  c.warm = ctx.createBiquadFilter();
+  c.warm.type = 'lowshelf'; c.warm.frequency.value = 150; c.warm.gain.value = 3.5;
+  c.air = ctx.createBiquadFilter();
+  c.air.type = 'peaking'; c.air.frequency.value = 3400; c.air.Q.value = 0.8; c.air.gain.value = 2;
+  c.dry.connect(c.warm).connect(c.air).connect(c.master);
   c.wetIn.connect(c.verb).connect(c.wet).connect(c.master);
   c.master.connect(c.glue).connect(c.comp).connect(c.clip);
   return c;
@@ -70,13 +74,17 @@ export class Voice {
       numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
       processorOptions: { steps: this.steps, seed: opts.seed || Math.floor(Math.random() * 1e9), cfg: opts.cfg },
     });
-    this.gain = ctx.createGain();
-    this.pan = ctx.createStereoPanner();
-    this.send = ctx.createGain();
-    this.node.connect(this.gain).connect(this.pan);
-    this.pan.connect(sys.dry);
-    this.pan.connect(this.send).connect(sys.wetIn);
-    this.send.gain.value = 0.35;
+    this.ext = opts.out || null;
+    if (this.ext) this.node.connect(this.ext);
+    else {
+      this.gain = ctx.createGain();
+      this.pan = ctx.createStereoPanner();
+      this.send = ctx.createGain();
+      this.node.connect(this.gain).connect(this.pan);
+      this.pan.connect(sys.dry);
+      this.pan.connect(this.send).connect(sys.wetIn);
+      this.send.gain.value = 0.35;
+    }
     this.states = [];
     this.params = Float32Array.from(REST_PARAMS);
     this.f0 = 130;
@@ -108,6 +116,7 @@ export class Voice {
   }
   configure(cfg) {
     this.node.port.postMessage({ t: 'cfg', cfg });
+    if (this.ext) return;
     if (cfg.volume !== undefined) this.gain.gain.setTargetAtTime(cfg.volume, this.sys.ctx.currentTime, 0.02);
     if (cfg.pan !== undefined) this.pan.pan.setTargetAtTime(cfg.pan, this.sys.ctx.currentTime, 0.02);
     if (cfg.send !== undefined) this.send.gain.setTargetAtTime(cfg.send, this.sys.ctx.currentTime, 0.05);
@@ -122,8 +131,29 @@ export class Voice {
   stop() { this.node.port.postMessage({ t: 'clear' }); }
   dispose() {
     this.node.port.postMessage({ t: 'kill' });
-    try { this.node.disconnect(); this.pan.disconnect(); this.send.disconnect(); } catch (e) {}
+    try { this.node.disconnect(); if (this.pan) { this.pan.disconnect(); this.send.disconnect(); } } catch (e) {}
   }
+}
+
+export class Strip {
+  constructor(sys) {
+    const ctx = sys.ctx;
+    this.sys = sys;
+    this.gain = ctx.createGain();
+    this.pan = ctx.createStereoPanner();
+    this.send = ctx.createGain();
+    this.gain.connect(this.pan);
+    this.pan.connect(sys.dry);
+    this.pan.connect(this.send).connect(sys.wetIn);
+    this.send.gain.value = 0.35;
+  }
+  set(cfg) {
+    const t = this.sys.ctx.currentTime;
+    if (cfg.volume !== undefined) this.gain.gain.setTargetAtTime(cfg.volume, t, 0.02);
+    if (cfg.pan !== undefined) this.pan.pan.setTargetAtTime(cfg.pan, t, 0.02);
+    if (cfg.send !== undefined) this.send.gain.setTargetAtTime(cfg.send, t, 0.05);
+  }
+  dispose() { try { this.gain.disconnect(); this.pan.disconnect(); this.send.disconnect(); } catch (e) {} }
 }
 
 export class AudioSystem {
@@ -132,6 +162,7 @@ export class AudioSystem {
     this.ready = null;
     this.steps = 2;
   }
+  strip() { return new Strip(this); }
   async start(ctx) {
     if (this.ready) return this.ready;
     this.ready = (async () => {
